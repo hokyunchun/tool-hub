@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>몰입원판 — Focus Disc</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,500;9..144,600&family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #FFFFFF;
+  --surface: #F2F1EC;
+  --surface-2: #E8E6DF;
+  --disc: #E8A33D;
+  --disc-dim: #6b5636;
+  --track: #ECEBE6;
+  --text: #1B1B1B;
+  --text-dim: #6B6B66;
+  --accent: #E2725B;
+  --accent-dim: #7a3d31;
+  --ok: #2F7A73;
+  --radius: 20px;
+  --line-rgb: 27,27,27;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #000000;
+    --surface: #121212;
+    --surface-2: #1C1C1C;
+    --track: #0A0A0A;
+    --text: #F1EAD9;
+    --text-dim: #9FB0B5;
+    --ok: #5FA8A0;
+    --line-rgb: 241,234,217;
+  }
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0; height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Work Sans', sans-serif;
+  overflow-x: hidden;
+}
+.display-font { font-family: 'Fraunces', serif; }
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 20px;
+  gap: 22px;
+}
+.disc-wrap {
+  position: relative;
+  width: min(78vw, 400px);
+  aspect-ratio: 1;
+  display: flex; align-items: center; justify-content: center;
+  background: #000000;
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 34px;
+  padding: 5.5%;
+  box-shadow: 0 30px 60px -20px rgba(0,0,0,0.9), inset 0 0 0 1px rgba(255,255,255,0.04);
+}
+.disc-face {
+  width: 100%; height: 100%;
+  display: block;
+}
+.disc.running-glow { filter: drop-shadow(0 0 18px rgba(196,58,42,0.35)); }
+@keyframes breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.94; }
+}
+.running-glow { animation: breathe 3.2s ease-in-out infinite; }
+.time-num {
+  font-family: 'Fraunces', serif;
+  font-weight: 500;
+  font-size: clamp(28px, 7vw, 46px);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  fill: #1B1B1B;
+}
+.controls {
+  display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: center;
+}
+.btn {
+  font-family: 'Work Sans', sans-serif;
+  font-weight: 600;
+  font-size: 14px;
+  padding: 12px 20px;
+  border-radius: 999px;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+.btn:active { transform: scale(0.96); }
+.btn-primary { background: var(--disc); color: #201404; }
+.btn-secondary { background: var(--surface-2); color: var(--text); }
+.btn-ghost { background: transparent; color: var(--text-dim); border: 1px solid rgba(var(--line-rgb),0.15); }
+.btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.minute-set {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--surface); padding: 8px 14px; border-radius: 999px;
+}
+.minute-set button {
+  background: var(--surface-2); border: none; color: var(--text);
+  width: 28px; height: 28px; border-radius: 50%; cursor: pointer; font-size: 16px;
+}
+.minute-set span { font-variant-numeric: tabular-nums; min-width: 56px; text-align: center; font-weight: 600; }
+.minute-set input {
+  background: transparent; border: none; color: var(--text);
+  width: 56px; text-align: center; font-weight: 600; font-size: 16px;
+  font-family: 'Work Sans', sans-serif; font-variant-numeric: tabular-nums;
+  -moz-appearance: textfield;
+}
+.minute-set input::-webkit-outer-spin-button,
+.minute-set input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.minute-set input:focus { outline: 2px solid var(--ok); border-radius: 6px; }
+.minute-set input:disabled { opacity: 0.4; }
+.task-input {
+  width: min(90vw, 380px);
+}
+.task-input input {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid rgba(var(--line-rgb),0.1);
+  color: var(--text);
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-family: 'Work Sans', sans-serif;
+  font-size: 14px;
+}
+.task-input input:focus { outline: 2px solid var(--ok); }
+.task-input input::placeholder { color: var(--text-dim); }
+.drawer-toggle {
+  position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+  background: var(--surface); color: var(--text-dim);
+  border: 1px solid rgba(var(--line-rgb),0.1);
+  font-size: 12.5px; padding: 8px 16px; border-radius: 999px; cursor: pointer;
+  z-index: 30;
+}
+.drawer-toggle:hover { color: var(--text); }
+.timeline-panel {
+  position: fixed; inset: auto 0 0 0;
+  width: 100%;
+  max-height: 0;
+  overflow: hidden;
+  background: var(--surface);
+  border-radius: var(--radius) var(--radius) 0 0;
+  padding: 0 22px;
+  display: flex; flex-direction: column; gap: 14px;
+  transition: max-height 0.3s ease, padding 0.3s ease;
+  z-index: 20;
+}
+.timeline-panel.open {
+  max-height: 60vh;
+  padding: 20px 22px 24px;
+  overflow-y: auto;
+}
+.timeline-head {
+  display: flex; justify-content: space-between; align-items: center;
+}
+.timeline-head h2 {
+  font-family: 'Fraunces', serif; font-weight: 500; font-size: 17px; margin: 0;
+}
+.copy-btn {
+  background: none; border: 1px solid rgba(var(--line-rgb),0.15); color: var(--text-dim);
+  font-size: 12px; padding: 6px 12px; border-radius: 999px; cursor: pointer;
+}
+.copy-btn:hover { color: var(--text); border-color: var(--ok); }
+.task-field-wrap input {
+  width: 100%;
+  background: var(--surface-2);
+  border: 1px solid rgba(var(--line-rgb),0.1);
+  color: var(--text);
+  padding: 12px 14px;
+  border-radius: 12px;
+  font-family: 'Work Sans', sans-serif;
+  font-size: 14px;
+}
+.task-field-wrap input::placeholder { color: var(--text-dim); }
+.task-field-wrap input:focus { outline: 2px solid var(--ok); }
+.session-row {
+  display: flex; gap: 12px; padding: 10px 0; border-top: 1px solid rgba(var(--line-rgb),0.07);
+}
+.session-row:first-of-type { border-top: none; }
+.session-time { font-size: 12px; color: var(--text-dim); min-width: 44px; padding-top: 2px; }
+.session-body { flex: 1; }
+.session-note { font-size: 14px; }
+.session-ai { font-size: 12.5px; color: var(--ok); margin-top: 4px; font-style: italic; }
+.empty-state { color: var(--text-dim); font-size: 13px; padding: 6px 0; }
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(10,15,18,0.72);
+  display: none; align-items: center; justify-content: center; z-index: 50;
+  padding: 20px;
+}
+.modal-overlay.show { display: flex; }
+.modal {
+  background: var(--surface); border-radius: var(--radius); padding: 26px;
+  width: min(90vw, 420px); display: flex; flex-direction: column; gap: 14px;
+}
+.modal h3 { font-family: 'Fraunces', serif; font-weight: 500; margin: 0; font-size: 19px; }
+.modal textarea {
+  width: 100%; min-height: 70px; background: var(--surface-2); border: 1px solid rgba(var(--line-rgb),0.1);
+  color: var(--text); border-radius: 12px; padding: 12px; font-family: 'Work Sans', sans-serif; font-size: 14px; resize: vertical;
+}
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.ai-comment-box {
+  background: var(--surface-2); border-radius: 10px; padding: 10px 12px; font-size: 13.5px; color: var(--ok);
+  display: none;
+}
+.ai-comment-box.show { display: block; }
+.loading-dot { display:inline-block; animation: pulse 1s infinite ease-in-out; }
+@keyframes pulse { 0%,100%{opacity:0.3} 50%{opacity:1} }
+body.focus-mode .timeline-panel,
+body.focus-mode .drawer-toggle,
+body.focus-mode .minute-set,
+body.focus-mode #startBtn,
+body.focus-mode #pauseBtn,
+body.focus-mode #resetBtn { display: none; }
+body.focus-mode .disc-wrap { width: min(92vw, 92vh); }
+body.focus-mode .controls { margin-top: 4px; }
+@media (max-width: 480px) {
+  .controls { gap: 8px; }
+  .btn { padding: 10px 16px; font-size: 13px; }
+}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <div class="disc-wrap">
+    <svg class="disc-face" id="discFace" viewBox="0 0 200 200"></svg>
+  </div>
+  <div class="minute-set" id="minuteSet">
+    <button id="minusBtn" aria-label="Decrease">−</button>
+    <input type="number" id="minuteInput" min="0" max="60" value="25" inputmode="numeric">
+    <button id="plusBtn" aria-label="Increase">+</button>
+  </div>
+  <div class="controls">
+    <button class="btn btn-primary" id="startBtn" aria-label="Start">▶</button>
+    <button class="btn btn-secondary" id="pauseBtn" disabled aria-label="Pause">⏸</button>
+    <button class="btn btn-ghost" id="resetBtn" aria-label="Reset">↺</button>
+    <button class="btn btn-ghost" id="focusBtn" aria-label="Fullscreen">⛶</button>
+  </div>
+</div>
+
+<button class="drawer-toggle" id="drawerToggle" aria-label="Log">☰</button>
+
+<div class="timeline-panel" id="timelinePanel">
+  <div class="timeline-head">
+    <h2>☰</h2>
+    <button class="copy-btn" id="copyBtn" aria-label="Copy for Notion">⎘</button>
+  </div>
+  <div class="task-field-wrap">
+    <input type="text" id="taskField" placeholder="Tell you my TASK">
+  </div>
+  <div id="timelineList">
+    <div class="empty-state">·</div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const discFace = document.getElementById('discFace');
+  const minuteInput = document.getElementById('minuteInput');
+  const minusBtn = document.getElementById('minusBtn');
+  const plusBtn = document.getElementById('plusBtn');
+  const startBtn = document.getElementById('startBtn');
+  const pauseBtn = document.getElementById('pauseBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const focusBtn = document.getElementById('focusBtn');
+  const app = document.getElementById('app');
+  const taskField = document.getElementById('taskField');
+  const timelineList = document.getElementById('timelineList');
+  const copyBtn = document.getElementById('copyBtn');
+  const drawerToggle = document.getElementById('drawerToggle');
+  const timelinePanel = document.getElementById('timelinePanel');
+
+  drawerToggle.addEventListener('click', () => {
+    timelinePanel.classList.toggle('open');
+    drawerToggle.textContent = timelinePanel.classList.contains('open') ? '▾' : '☰';
+  });
+
+  const CX = 100, CY = 100;
+  const R_FACE = 96, R_PIE = 64, R_NUM = 75, R_TICK_OUT = 94, R_TICK_IN_MAJOR = 84, R_TICK_IN_MINOR = 89;
+  const NS = 'http://www.w3.org/2000/svg';
+
+  function polarXY(valueMinutes, radius) {
+    const angle = (valueMinutes / 60) * 2 * Math.PI;
+    return { x: CX - radius * Math.sin(angle), y: CY - radius * Math.cos(angle) };
+  }
+  function el(tag, attrs) {
+    const e = document.createElementNS(NS, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    return e;
+  }
+
+  let piePathEl, handLineEl;
+  function buildStaticFace() {
+    discFace.innerHTML = '';
+    discFace.appendChild(el('circle', { cx: CX, cy: CY, r: R_FACE, fill: '#F4F1E9', stroke: '#1B1B1B', 'stroke-width': 1.5 }));
+    piePathEl = el('path', { d: '', fill: '#C0392B' });
+    discFace.appendChild(piePathEl);
+    for (let v = 0; v < 60; v++) {
+      const isMajor = v % 5 === 0;
+      const rIn = isMajor ? R_TICK_IN_MAJOR : R_TICK_IN_MINOR;
+      const p1 = polarXY(v, rIn);
+      const p2 = polarXY(v, R_TICK_OUT);
+      discFace.appendChild(el('line', {
+        x1: p1.x.toFixed(2), y1: p1.y.toFixed(2), x2: p2.x.toFixed(2), y2: p2.y.toFixed(2),
+        stroke: '#1B1B1B', 'stroke-width': isMajor ? 1.6 : 0.8
+      }));
+      if (isMajor) {
+        const pn = polarXY(v, R_NUM);
+        const t = el('text', {
+          x: pn.x.toFixed(2), y: pn.y.toFixed(2), 'text-anchor': 'middle',
+          'dominant-baseline': 'middle', 'font-size': '11', 'font-family': "'Work Sans', sans-serif",
+          'font-weight': '600', fill: '#1B1B1B'
+        });
+        t.textContent = v;
+        discFace.appendChild(t);
+      }
+    }
+    handLineEl = el('line', { x1: CX, y1: CY, x2: CX, y2: CY - R_PIE, stroke: '#F4F1E9', 'stroke-width': 2 });
+    discFace.appendChild(handLineEl);
+    discFace.appendChild(el('circle', { cx: CX, cy: CY, r: 9, fill: '#F4F1E9', stroke: '#1B1B1B', 'stroke-width': 1.5 }));
+  }
+
+  function buildPiePath(valueMinutes) {
+    if (valueMinutes <= 0) return '';
+    const steps = Math.max(2, Math.round(valueMinutes * 2));
+    let d = `M ${CX} ${CY} `;
+    for (let i = 0; i <= steps; i++) {
+      const v = (valueMinutes * i) / steps;
+      const p = polarXY(v, R_PIE);
+      d += `L ${p.x.toFixed(2)} ${p.y.toFixed(2)} `;
+    }
+    d += 'Z';
+    return d;
+  }
+
+  function updateDiscVisual() {
+    const remMinutes = remaining / 60;
+    piePathEl.setAttribute('d', buildPiePath(remMinutes));
+    const edge = polarXY(remMinutes, R_PIE);
+    handLineEl.setAttribute('x2', edge.x.toFixed(2));
+    handLineEl.setAttribute('y2', edge.y.toFixed(2));
+  }
+
+  let minutes = 25;
+  let totalSeconds = minutes * 60;
+  let remaining = totalSeconds;
+  let timerId = null;
+  let running = false;
+  let sessionStartTime = null;
+  let pendingSessionDuration = 0;
+
+  const todayKey = () => {
+    const d = new Date();
+    return `sessions:${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  };
+
+  let sessions = [];
+
+  // NOTE: 원본은 Claude 아티팩트 전용 window.storage를 사용했으나,
+  // 실제 배포 환경에서는 이 API가 없어 브라우저 localStorage로 교체함.
+  function loadSessions() {
+    try {
+      const raw = window.localStorage.getItem(todayKey());
+      if (raw) sessions = JSON.parse(raw);
+    } catch(e) { sessions = []; }
+    renderTimeline();
+  }
+  function persistSessions() {
+    try { window.localStorage.setItem(todayKey(), JSON.stringify(sessions)); }
+    catch(e) { console.error('save failed', e); }
+  }
+
+  function updateMinuteDisplay() {
+    minuteInput.value = minutes;
+    totalSeconds = minutes * 60;
+    remaining = totalSeconds;
+    updateDiscVisual();
+  }
+  function clampMinutes(v) {
+    v = parseInt(v, 10);
+    if (isNaN(v)) v = 25;
+    return Math.min(60, Math.max(0, v));
+  }
+
+  minusBtn.addEventListener('click', () => {
+    if (running) return;
+    minutes = Math.max(0, minutes - 5);
+    updateMinuteDisplay();
+  });
+  plusBtn.addEventListener('click', () => {
+    if (running) return;
+    minutes = Math.min(60, minutes + 5);
+    updateMinuteDisplay();
+  });
+  minuteInput.addEventListener('input', () => {
+    if (running) return;
+    const v = clampMinutes(minuteInput.value);
+    minutes = v;
+    totalSeconds = minutes * 60;
+    remaining = totalSeconds;
+    updateDiscVisual();
+  });
+  minuteInput.addEventListener('blur', () => {
+    minutes = clampMinutes(minuteInput.value);
+    updateMinuteDisplay();
+  });
+
+  let currentNote = '';
+  taskField.addEventListener('input', () => { currentNote = taskField.value; });
+
+  function tick() {
+    remaining -= 1;
+    updateDiscVisual();
+    if (remaining <= 0) {
+      clearInterval(timerId);
+      running = false;
+      discFace.classList.remove('running-glow');
+      startBtn.disabled = false;
+      pauseBtn.disabled = true;
+      minuteInput.disabled = false;
+      finalizeSession(currentNote);
+    }
+  }
+
+  startBtn.addEventListener('click', () => {
+    if (running || minutes <= 0) return;
+    running = true;
+    sessionStartTime = new Date();
+    pendingSessionDuration = minutes;
+    discFace.classList.add('running-glow');
+    startBtn.disabled = true;
+    pauseBtn.disabled = false;
+    minuteInput.disabled = true;
+    timerId = setInterval(tick, 1000);
+  });
+  pauseBtn.addEventListener('click', () => {
+    if (!running) return;
+    running = false;
+    clearInterval(timerId);
+    discFace.classList.remove('running-glow');
+    startBtn.disabled = false;
+    pauseBtn.disabled = true;
+  });
+  resetBtn.addEventListener('click', () => {
+    clearInterval(timerId);
+    running = false;
+    remaining = totalSeconds;
+    discFace.classList.remove('running-glow');
+    startBtn.disabled = false;
+    pauseBtn.disabled = true;
+    minuteInput.disabled = false;
+    updateDiscVisual();
+  });
+  focusBtn.addEventListener('click', async () => {
+    document.body.classList.toggle('focus-mode');
+    try {
+      if (!document.fullscreenElement) await app.requestFullscreen();
+      else await document.exitFullscreen();
+    } catch(e) { /* fullscreen unsupported - CSS focus-mode still applies */ }
+  });
+
+  // NOTE: 이 fetch는 브라우저에서 직접 Anthropic API를 호출하도록 되어 있어
+  // API 키/CORS 문제로 실패하고 항상 대체 문구가 뜹니다.
+  // 실제 AI 코멘트를 쓰려면 Next.js API route(서버사이드)로 옮겨야 합니다 (다음 사이클 과제).
+  async function getAiComment(note, durationMin) {
+    if (!note) return '기록 없이도 괜찮아요. 다음 세션도 화이팅!';
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 100,
+          messages: [{
+            role: 'user',
+            content: `사용자가 방금 ${durationMin}분짜리 뽀모도로 집중 세션을 마쳤고, 이렇게 기록했습니다: "${note}". 이 기록을 보고, 짧고 담백한 한 문장(20자 내외, 한국어)으로 격려하거나 다음 세션에 대한 제안을 해주세요. 이모지나 느낌표 남발 없이, 담담하고 다정한 톤으로. 문장 하나만 출력하세요.`
+          }]
+        })
+      });
+      const data = await res.json();
+      const text = data.content?.map(b => b.text || '').join('').trim();
+      return text || '기록 감사해요. 다음 세션도 이어가볼까요?';
+    } catch(e) {
+      return '(AI 코멘트를 불러오지 못했어요)';
+    }
+  }
+
+  async function finalizeSession(note) {
+    const startStr = sessionStartTime ? sessionStartTime.toTimeString().slice(0,5) : '';
+    const session = {
+      id: Date.now(),
+      time: startStr,
+      duration: pendingSessionDuration,
+      note: note || '(기록 없음)',
+      aiComment: '···'
+    };
+    sessions.push(session);
+    renderTimeline();
+    remaining = totalSeconds;
+    updateDiscVisual();
+    taskField.value = '';
+    currentNote = '';
+
+    const aiComment = await getAiComment(note, session.duration);
+    session.aiComment = aiComment;
+    persistSessions();
+    renderTimeline();
+  }
+
+  function renderTimeline() {
+    if (!sessions.length) {
+      timelineList.innerHTML = '<div class="empty-state">—</div>';
+      return;
+    }
+    timelineList.innerHTML = sessions.map(s => `
+      <div class="session-row">
+        <div class="session-time">${s.time}</div>
+        <div class="session-body">
+          <div class="session-note">${escapeHtml(s.note)} <span style="color:var(--text-dim); font-size:12px;">· ${s.duration}m</span></div>
+          ${s.aiComment ? `<div class="session-ai">${s.aiComment === '···' ? '<span class="loading-dot">···</span>' : escapeHtml(s.aiComment)}</div>` : ''}
+        </div>
+      </div>
+    `).join('');
+  }
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  copyBtn.addEventListener('click', async () => {
+    if (!sessions.length) return;
+    const d = new Date();
+    const dateStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    let md = `## ${dateStr}\n\n`;
+    sessions.forEach(s => {
+      md += `- **${s.time}** (${s.duration}m) — ${s.note}\n`;
+      if (s.aiComment) md += `  > ${s.aiComment}\n`;
+    });
+    try {
+      await navigator.clipboard.writeText(md);
+      copyBtn.textContent = '✓';
+      setTimeout(() => { copyBtn.textContent = '⎘'; }, 1200);
+    } catch(e) {
+      alert('Copy failed — select and copy manually:\n\n' + md);
+    }
+  });
+
+  buildStaticFace();
+  updateMinuteDisplay();
+  loadSessions();
+})();
+</script>
+</body>
+</html>

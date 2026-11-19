@@ -4,6 +4,7 @@ const STORAGE_KEY = "fire-study-planner-progress-v1";
 const LOCAL_PLAN_KEY = "fire-study-planner-plan-v2";
 const weekdays = ["일", "월", "화", "수", "목", "금", "토"];
 const subjectColors = ["#e4f0ff", "#fde5e5", "#fff2c9", "#e6f3e8", "#efe7ff", "#ffe9d8"];
+const starterMinutes = [72, 47, 49];
 let supabase;
 let user = null;
 let plan = null;
@@ -98,7 +99,7 @@ function onboardingView(message = "") {
   document.querySelector("#use-starter").addEventListener("click", async () => {
     const legacy = readLocal(STORAGE_KEY, {});
     const newPlan = { id: crypto.randomUUID(), user_id: user.id, title: "소방시험 Study Planner", start_date: "2026-11-20", target_date: END_DATE };
-    const subjectRows = starterSubjects.map((item, index) => ({ id: crypto.randomUUID(), user_id: user.id, plan_id: newPlan.id, name: item.name, lecture_count: item.end - item.start + 1, avg_minutes: 60, color: subjectColors[index], sort_order: index }));
+    const subjectRows = starterSubjects.map((item, index) => ({ id: crypto.randomUUID(), user_id: user.id, plan_id: newPlan.id, name: item.name, lecture_count: item.end - item.start + 1, avg_minutes: starterMinutes[index], color: subjectColors[index], sort_order: index }));
     const taskRows = makeStarterTasks(subjectRows);
     try { await saveNewPlan(newPlan, subjectRows, taskRows, legacy); }
     catch (error) { onboardingView(error.message); }
@@ -226,7 +227,7 @@ function render() {
   const months = [];
   for (let d = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1, 12)); d <= end; d.setUTCMonth(d.getUTCMonth() + 1)) months.push(monthMarkup(d.getUTCFullYear(), d.getUTCMonth()));
   const legend = subjects.map((subject) => `<span><i style="background:${escapeHTML(subject.color || "#ddd")}"></i>${escapeHTML(subject.name)}</span>`).join("");
-  document.querySelector("#app").innerHTML = `<main class="page-shell"><header class="page-header"><div><p class="eyebrow">나의 학습 공간 · ${escapeHTML(plan.title)}</p><h1>Study Planner</h1><p class="subtitle">${subjects.reduce((n,s)=>n+Number(s.lecture_count),0)}강 · 완강 목표 ${formatDate(plan.target_date,{year:"numeric",month:"long",day:"numeric"})}</p></div><div class="account-tools"><span class="timezone-badge">한국 시간 · KST</span><span class="sync-state">${escapeHTML(syncMessage)}</span><button class="button" id="sign-out">로그아웃</button></div></header><div class="dashboard">${renderTasks()}${renderOverview()}<section class="card calendar-card"><div class="section-heading"><div><p class="eyebrow">학습 일정</p><h2>캘린더</h2></div><span class="calendar-key">${legend}</span></div><div class="months">${months.join("")}</div><p class="calendar-help">날짜를 누르면 해당 날짜의 계획을 볼 수 있어요. 날짜 기준은 한국 시간입니다. 평일 기준으로 계획을 만들었습니다.</p></section></div><footer>${supabase ? "학습 기록은 계정에 안전하게 저장되며, 로그인하면 다른 기기에서도 이어집니다." : "클라우드 연결 전이어서 현재 기록은 이 브라우저에 저장됩니다."} 강의 시간은 과목별 설정값으로 계산한 예상치이며, 초기값은 1강당 60분입니다.</footer></main>`;
+  document.querySelector("#app").innerHTML = `<main class="page-shell"><header class="page-header"><div><p class="eyebrow">나의 학습 공간 · ${escapeHTML(plan.title)}</p><h1>Study Planner</h1><p class="subtitle">${subjects.reduce((n,s)=>n+Number(s.lecture_count),0)}강 · 완강 목표 ${formatDate(plan.target_date,{year:"numeric",month:"long",day:"numeric"})}</p></div><div class="account-tools"><span class="timezone-badge">한국 시간 · KST</span><span class="sync-state">${escapeHTML(syncMessage)}</span><button class="button" id="sign-out">로그아웃</button></div></header><div class="dashboard">${renderTasks()}${renderOverview()}<section class="card calendar-card"><div class="section-heading"><div><p class="eyebrow">학습 일정</p><h2>캘린더</h2></div><span class="calendar-key">${legend}</span></div><div class="months">${months.join("")}</div><p class="calendar-help">날짜를 누르면 해당 날짜의 계획을 볼 수 있어요. 날짜 기준은 한국 시간입니다. 평일 기준으로 계획을 만들었습니다.</p></section></div><footer>${supabase ? "학습 기록은 계정에 안전하게 저장되며, 로그인하면 다른 기기에서도 이어집니다." : "클라우드 연결 전이어서 현재 기록은 이 브라우저에 저장됩니다."} 강의 시간은 제공된 강의 기록의 과목별 평균으로 추산하며, OX 복습 시간은 제외합니다.</footer></main>`;
   document.querySelector("#sign-out").addEventListener("click", signOut);
   document.querySelectorAll("[data-task]").forEach((input) => input.addEventListener("change", (event) => setTask(event.currentTarget.dataset.task, event.currentTarget.checked)));
   document.querySelector("#complete-day").addEventListener("click", async () => { await setTasks(tasksOn(selectedDate).map((task) => task.id), true); });
@@ -256,7 +257,7 @@ async function start() {
     const local = readLocal(LOCAL_PLAN_KEY, null);
     user = { id: "local" };
     if (local?.plan) ({ plan, subjects, tasks, progress } = local);
-    else { plan = { id: "local-plan", title: "소방시험 Study Planner", start_date: "2026-11-20", target_date: END_DATE }; subjects = starterSubjects.map((s, i) => ({ id: String(i), name: s.name, lecture_count: s.end - s.start + 1, avg_minutes: 60, color: subjectColors[i] })); tasks = makeStarterTasks(subjects, true); progress = readLocal(STORAGE_KEY, {}); }
+    else { plan = { id: "local-plan", title: "소방시험 Study Planner", start_date: "2026-11-20", target_date: END_DATE }; subjects = starterSubjects.map((s, i) => ({ id: String(i), name: s.name, lecture_count: s.end - s.start + 1, avg_minutes: starterMinutes[i], color: subjectColors[i] })); tasks = makeStarterTasks(subjects, true); progress = readLocal(STORAGE_KEY, {}); }
     if (!plan) onboardingView(); else render();
     return;
   }

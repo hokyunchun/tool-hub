@@ -15,9 +15,11 @@ npm run dev
 
 1. `lib/tools.ts` 에 도구 정보 한 줄 추가 (slug, name, description, category, emoji)
 2. `app/tools/{slug}/page.tsx` 생성해서 실제 도구 컴포넌트 작성
-3. 홈페이지(`app/page.tsx`)는 자동으로 목록에 반영됨 — 따로 손댈 필요 없음
-4. `git add . && git commit -m "add: {도구이름}" && git push`
-5. Vercel 자동 배포 확인
+3. 정적 HTML/JS 도구는 `public/{slug}/`에 파일을 두고 페이지에서 연결
+4. 프로젝트 문서는 `docs/apps/{slug}/`에 보관
+5. 홈페이지(`app/page.tsx`)는 도구 목록에 자동 반영됨 — 따로 손댈 필요 없음
+6. `git add . && git commit -m "add: {도구이름}" && git push`
+7. Vercel 자동 배포 확인
 
 ## 배포
 
@@ -33,7 +35,11 @@ app/
   tools/
     pomodoro/
       page.tsx        # Focus Disc 페이지
+    fire-study-planner/
+      page.tsx        # Study Planner 경로와 페이지 설명
 lib/
   tools.ts            # 툴 레지스트리 — 새 도구는 여기 한 줄만 추가
-components/            # 공용 컴포넌트 (필요시)
+components/            # 공용 컴포넌트
+public/                # 정적 HTML/JS 도구 파일
+docs/apps/             # 각 도구의 기획·요구사항·설계 문서
 ```

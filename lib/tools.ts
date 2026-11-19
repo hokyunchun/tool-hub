@@ -34,6 +34,14 @@ export const tools: Tool[] = [
     emoji: "💰",
     status: "live",
   },
+  {
+    slug: "fire-study-planner",
+    name: "소방시험 Study Planner",
+    description: "297강 강의 계획, OX 복습, 과목별 진도를 한곳에서 관리.",
+    category: "학습",
+    emoji: "🚒",
+    status: "live",
+  },
 ];
 
 export function getToolBySlug(slug: string) {

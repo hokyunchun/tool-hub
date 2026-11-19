@@ -1,178 +1,265 @@
-import { END_DATE, TIME_ZONE, TOTAL_LECTURES, planForDate, subjects, tasksForDate } from "./plan.js";
+import { END_DATE, TIME_ZONE, TOTAL_LECTURES, subjects as starterSubjects, tasksForDate as starterTasks } from "./plan.js";
 
 const STORAGE_KEY = "fire-study-planner-progress-v1";
+const LOCAL_PLAN_KEY = "fire-study-planner-plan-v2";
 const weekdays = ["일", "월", "화", "수", "목", "금", "토"];
-let progress = readProgress();
+const subjectColors = ["#e4f0ff", "#fde5e5", "#fff2c9", "#e6f3e8", "#efe7ff", "#ffe9d8"];
+let supabase;
+let user = null;
+let plan = null;
+let plans = [];
+let subjects = [];
+let tasks = [];
+let progress = {};
 let selectedDate = todayInKorea();
-
-function readProgress() {
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
-  } catch {
-    return {};
-  }
-}
-
-function saveProgress() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
-}
+let syncMessage = "이 기기에 저장 중";
+let realtimeChannel;
 
 function todayInKorea() {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: TIME_ZONE,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date());
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
   const part = (type) => parts.find((item) => item.type === type)?.value;
   return `${part("year")}-${part("month")}-${part("day")}`;
 }
-
-function dateFromISO(date) {
-  const [year, month, day] = date.split("-").map(Number);
-  return new Date(Date.UTC(year, month - 1, day, 12));
+function dateFromISO(date) { const [y, m, d] = date.split("-").map(Number); return new Date(Date.UTC(y, m - 1, d, 12)); }
+function formatDate(date, options = { year: "numeric", month: "long", day: "numeric", weekday: "long" }) { return new Intl.DateTimeFormat("ko-KR", { ...options, timeZone: "UTC" }).format(dateFromISO(date)); }
+function daysBetween(from, to) { return Math.round((dateFromISO(to) - dateFromISO(from)) / 86400000); }
+function escapeHTML(value) { return String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]); }
+function readLocal(key, fallback) { try { return JSON.parse(localStorage.getItem(key) || "null") ?? fallback; } catch { return fallback; } }
+function persistLocal() { localStorage.setItem(STORAGE_KEY, JSON.stringify(progress)); localStorage.setItem(LOCAL_PLAN_KEY, JSON.stringify({ plan, subjects, tasks })); }
+function displayLabel(task) {
+  const subject = subjects.find((item) => item.id === task.subject_id);
+  if (task.type === "ox") return `${subject?.name ?? ""} ${task.range_start}~${task.range_end}강 OX`;
+  return `${subject?.name ?? ""} ${task.lecture_number}강`;
 }
+function tasksOn(date) { return tasks.filter((task) => task.study_date === date); }
+function subjectDoneCount(subject) { return tasks.filter((task) => task.subject_id === subject.id && task.type === "lecture" && progress[task.id]).length; }
+function progressBar(percent, label) { return `<div class="progress" role="progressbar" aria-label="${escapeHTML(label)}" aria-valuenow="${percent}" aria-valuemin="0" aria-valuemax="100"><div class="progress-fill" style="width:${percent}%"></div></div>`; }
 
-function formatDate(date, options = { year: "numeric", month: "long", day: "numeric", weekday: "long" }) {
-  return new Intl.DateTimeFormat("ko-KR", { ...options, timeZone: "UTC" }).format(dateFromISO(date));
-}
-
-function daysBetween(from, to) {
-  return Math.round((dateFromISO(to) - dateFromISO(from)) / 86_400_000);
-}
-
-function escapeHTML(value) {
-  return String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
-}
-
-function completedLectureCount(subject) {
-  let count = 0;
-  for (const [date, first, last] of subject.days) {
-    for (let lecture = first; lecture <= last; lecture += 1) {
-      if (progress[`${date}|lecture|${subject.name}|${lecture}`]) count += 1;
+function makeStarterTasks(subjectRows, localIds = false) {
+  const rows = [];
+  for (const starter of starterSubjects) {
+    const subject = subjectRows.find((row) => row.name === starter.name);
+    if (!subject) continue;
+    for (const [date, first, last] of starter.days) {
+      for (let n = first; n <= last; n += 1) rows.push({ id: localIds ? `${date}|lecture|${subject.name}|${n}` : crypto.randomUUID(), subject_id: subject.id, type: "lecture", lecture_number: n, range_start: null, range_end: null, study_date: date, user_id: user?.id });
+      rows.push({ id: localIds ? `${date}|ox|${subject.name}|${first}-${last}` : crypto.randomUUID(), subject_id: subject.id, type: "ox", lecture_number: null, range_start: first, range_end: last, study_date: date, user_id: user?.id });
     }
   }
-  return count;
+  return rows;
 }
-
-function allCompletedLectureCount() {
-  return subjects.reduce((sum, subject) => sum + completedLectureCount(subject), 0);
+function makeEvenSchedule(subjectRows, startDate, endDate) {
+  const days = [];
+  for (let d = dateFromISO(startDate); d <= dateFromISO(endDate); d.setUTCDate(d.getUTCDate() + 1)) {
+    if (![0, 6].includes(d.getUTCDay())) days.push(d.toISOString().slice(0, 10));
+  }
+  if (!days.length) throw new Error("목표 날짜 사이에 평일이 없습니다. 날짜를 확인해 주세요.");
+  const rows = [];
+  for (const subject of subjectRows) {
+    let previous = 0;
+    for (let i = 0; i < days.length; i += 1) {
+      const current = Math.floor(((i + 1) * subject.lecture_count) / days.length);
+      if (current > previous) {
+        for (let number = previous + 1; number <= current; number += 1) rows.push({ id: crypto.randomUUID(), subject_id: subject.id, type: "lecture", lecture_number: number, range_start: null, range_end: null, study_date: days[i], user_id: user?.id });
+        rows.push({ id: crypto.randomUUID(), subject_id: subject.id, type: "ox", lecture_number: null, range_start: previous + 1, range_end: current, study_date: days[i], user_id: user?.id });
+      }
+      previous = current;
+    }
+  }
+  return rows;
 }
-
-function progressBar(percent, label) {
-  return `<div class="progress" role="progressbar" aria-label="${escapeHTML(label)}" aria-valuenow="${percent}" aria-valuemin="0" aria-valuemax="100"><div class="progress-fill" style="width:${percent}%"></div></div>`;
+function authView(message = "") {
+  document.querySelector("#app").innerHTML = `<main class="page-shell"><header class="page-header"><div><p class="eyebrow">공부 기록을 여러 기기에서 이어가세요</p><h1>Study Planner</h1><p class="subtitle">계정으로 로그인하면 기록이 클라우드에 저장됩니다.</p></div><span class="timezone-badge">한국 시간 · KST</span></header>
+  <section class="card auth-card"><h2>내 학습 공간</h2><p class="subtitle">이메일과 비밀번호로 가입하거나 로그인하세요.</p><form id="auth-form"><label class="field">이메일<input name="email" type="email" autocomplete="email" required placeholder="name@example.com"></label><label class="field">비밀번호<input name="password" type="password" minlength="8" autocomplete="current-password" required placeholder="8자 이상"></label><div class="button-row"><button class="button button-primary" name="action" value="login">로그인</button><button class="button" name="action" value="signup">새 계정 만들기</button></div></form><p class="notice" role="status">${escapeHTML(message || (supabase ? "" : "클라우드 연결 설정 전입니다. 현재는 이 기기에만 저장됩니다."))}</p></section></main>`;
+  document.querySelector("#auth-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const action = event.submitter?.value || "login";
+    const email = new FormData(event.currentTarget).get("email");
+    const password = new FormData(event.currentTarget).get("password");
+    if (!supabase) { authView("클라우드 설정이 아직 완료되지 않았습니다. 잠시 후 다시 이용해 주세요."); return; }
+    const result = action === "signup" ? await supabase.auth.signUp({ email, password }) : await supabase.auth.signInWithPassword({ email, password });
+    if (result.error) { authView(result.error.message); return; }
+    if (action === "signup" && !result.data.session) authView("가입 확인 이메일을 보냈습니다. 이메일 확인을 마친 뒤 로그인해 주세요.");
+    else { user = result.data.user; await loadUserData(); render(); }
+  });
+}
+function onboardingView(message = "") {
+  const today = todayInKorea();
+  document.querySelector("#app").innerHTML = `<main class="page-shell"><header class="page-header"><div><p class="eyebrow">나만의 학습 계획</p><h1>Study Planner</h1><p class="subtitle">과목별 강의 수와 완강 목표일을 입력하면 평일 기준으로 계획을 만듭니다.</p></div><button class="button" id="sign-out">로그아웃</button></header>
+  <div class="setup-grid"><section class="card"><h2>기존 소방시험 계획</h2><p>행정법총론, 소방관계법규, 소방학개론 297강과 기존 날짜별 일정을 가져옵니다.</p><button class="button button-primary" id="use-starter">기존 297강 계획 시작</button></section>
+  <section class="card"><h2>내 강의로 새 계획 만들기</h2><form id="plan-form"><label class="field">계획 이름<input name="title" required value="나의 학습 계획"></label><div class="field-row"><label class="field">시작일<input name="start" type="date" required value="${today}"></label><label class="field">완강 목표일<input name="end" type="date" required value="${escapeHTML(END_DATE)}"></label></div><div id="subject-fields"><div class="subject-input-row"><input name="subjectName" required placeholder="과목명"><input name="lectureCount" type="number" min="1" required placeholder="강의 수"><label class="minutes-field"><input name="avgMinutes" type="number" min="1" max="600" value="60" required aria-label="강의 한 편의 평균 시간"><span>분/강</span></label><button type="button" class="button remove-subject" aria-label="과목 삭제">×</button></div></div><div class="button-row"><button class="button" type="button" id="add-subject">과목 추가</button><button class="button button-primary" type="submit">계획 만들기</button></div></form></section></div><p class="notice" role="status">${escapeHTML(message)}</p></main>`;
+  document.querySelector("#sign-out").addEventListener("click", signOut);
+  document.querySelector("#add-subject").addEventListener("click", () => {
+    const row = document.createElement("div"); row.className = "subject-input-row";
+    row.innerHTML = '<input name="subjectName" required placeholder="과목명"><input name="lectureCount" type="number" min="1" required placeholder="강의 수"><label class="minutes-field"><input name="avgMinutes" type="number" min="1" max="600" value="60" required aria-label="강의 한 편의 평균 시간"><span>분/강</span></label><button type="button" class="button remove-subject" aria-label="과목 삭제">×</button>';
+    document.querySelector("#subject-fields").append(row);
+    row.querySelector(".remove-subject").addEventListener("click", () => row.remove());
+  });
+  document.querySelectorAll(".remove-subject").forEach((button) => button.addEventListener("click", () => { if (document.querySelectorAll(".subject-input-row").length > 1) button.closest(".subject-input-row").remove(); }));
+  document.querySelector("#use-starter").addEventListener("click", async () => {
+    const legacy = readLocal(STORAGE_KEY, {});
+    const newPlan = { id: crypto.randomUUID(), user_id: user.id, title: "소방시험 Study Planner", start_date: "2026-11-20", target_date: END_DATE };
+    const subjectRows = starterSubjects.map((item, index) => ({ id: crypto.randomUUID(), user_id: user.id, plan_id: newPlan.id, name: item.name, lecture_count: item.end - item.start + 1, avg_minutes: 60, color: subjectColors[index], sort_order: index }));
+    const taskRows = makeStarterTasks(subjectRows);
+    try { await saveNewPlan(newPlan, subjectRows, taskRows, legacy); }
+    catch (error) { onboardingView(error.message); }
+  });
+  document.querySelector("#plan-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const title = String(form.get("title")).trim();
+    const start = String(form.get("start"));
+    const end = String(form.get("end"));
+    if (end < start) { onboardingView("완강 목표일은 시작일 이후로 설정해 주세요."); return; }
+    const names = form.getAll("subjectName").map((value) => String(value).trim());
+    const counts = form.getAll("lectureCount").map(Number);
+    const newPlan = { id: crypto.randomUUID(), user_id: user.id, title, start_date: start, target_date: end };
+    const minutes = form.getAll("avgMinutes").map(Number);
+    const subjectRows = names.map((name, index) => ({ id: crypto.randomUUID(), user_id: user.id, plan_id: newPlan.id, name, lecture_count: counts[index], avg_minutes: minutes[index] || 60, color: subjectColors[index % subjectColors.length], sort_order: index }));
+    try { await saveNewPlan(newPlan, subjectRows, makeEvenSchedule(subjectRows, start, end), {}); }
+    catch (error) { onboardingView(error.message); }
+  });
+}
+async function saveNewPlan(newPlan, subjectRows, taskRows, oldProgress) {
+  if (supabase) {
+    const a = await supabase.from("study_plans").insert(newPlan);
+    if (a.error) throw a.error;
+    const b = await supabase.from("study_subjects").insert(subjectRows);
+    if (b.error) throw b.error;
+    const c = await supabase.from("study_tasks").insert(taskRows);
+    if (c.error) throw c.error;
+    const migrated = taskRows.filter((task) => {
+      if (task.type === "lecture") return oldProgress[`${task.study_date}|lecture|${subjectRows.find(s => s.id === task.subject_id)?.name}|${task.lecture_number}`];
+      return oldProgress[starterTasks(task.study_date).find(x => x.type === "ox" && x.label.startsWith(subjectRows.find(s => s.id === task.subject_id)?.name))?.id];
+    }).map((task) => ({ id: crypto.randomUUID(), user_id: user.id, plan_id: newPlan.id, task_id: task.id, completed_at: new Date().toISOString() }));
+    if (migrated.length) await supabase.from("study_progress").insert(migrated);
+  } else {
+    localStorage.setItem(LOCAL_PLAN_KEY, JSON.stringify({ plan: newPlan, subjects: subjectRows, tasks: taskRows, progress: oldProgress }));
+  }
+  plan = newPlan; subjects = subjectRows; tasks = taskRows; progress = oldProgress;
+  plans = [newPlan]; persistLocal(); if (supabase) subscribeToProgress(); render();
+}
+async function loadUserData() {
+  const { data: planRows, error } = await supabase.from("study_plans").select("*").order("created_at", { ascending: true });
+  if (error) throw error;
+  plans = planRows || [];
+  plan = plans[0] || null;
+  if (!plan) { onboardingView(); return; }
+  const [{ data: subjectRows, error: subjectError }, { data: taskRows, error: taskError }, { data: doneRows, error: progressError }] = await Promise.all([
+    supabase.from("study_subjects").select("*").eq("plan_id", plan.id).order("sort_order"),
+    supabase.from("study_tasks").select("*").eq("plan_id", plan.id).order("study_date"),
+    supabase.from("study_progress").select("task_id").eq("plan_id", plan.id),
+  ]);
+  if (subjectError || taskError || progressError) throw subjectError || taskError || progressError;
+  subjects = subjectRows || []; tasks = taskRows || []; progress = Object.fromEntries((doneRows || []).map((row) => [row.task_id, true]));
+  localStorage.setItem(LOCAL_PLAN_KEY, JSON.stringify({ plan, subjects, tasks, progress }));
+  subscribeToProgress();
+}
+function subscribeToProgress() {
+  if (realtimeChannel) supabase.removeChannel(realtimeChannel);
+  realtimeChannel = supabase.channel(`progress-${plan.id}`).on("postgres_changes", { event: "*", schema: "public", table: "study_progress", filter: `plan_id=eq.${plan.id}` }, async () => {
+    const { data } = await supabase.from("study_progress").select("task_id").eq("plan_id", plan.id);
+    progress = Object.fromEntries((data || []).map((row) => [row.task_id, true])); persistLocal(); render();
+  }).subscribe();
+}
+async function setTasks(taskIds, isDone) {
+  const previous = { ...progress };
+  for (const taskId of taskIds) {
+    if (isDone) progress[taskId] = true; else delete progress[taskId];
+  }
+  persistLocal(); render();
+  if (!supabase || !user || !plan) { syncMessage = "이 기기에 저장 중"; render(); return; }
+  syncMessage = "클라우드에 저장 중"; render();
+  const result = isDone
+    ? await supabase.from("study_progress").upsert(taskIds.map((task_id) => ({ user_id: user.id, plan_id: plan.id, task_id, completed_at: new Date().toISOString() })), { onConflict: "task_id" })
+    : await supabase.from("study_progress").delete().in("task_id", taskIds);
+  if (result.error) progress = previous;
+  persistLocal();
+  syncMessage = result.error ? "동기화 오류: 다시 로그인하거나 연결을 확인해 주세요." : "클라우드에 저장됨 · 다른 기기와 동기화";
+  render();
+}
+async function setTask(taskId, isDone) { return setTasks([taskId], isDone); }
+async function signOut() {
+  if (supabase) await supabase.auth.signOut();
+  user = null; plan = null; subjects = []; tasks = []; progress = {}; render();
 }
 
 function renderTasks() {
-  const plan = planForDate(selectedDate);
-  const tasks = tasksForDate(selectedDate);
-  const percent = tasks.length ? Math.round((tasks.filter((task) => progress[task.id]).length / tasks.length) * 100) : 0;
-  const dayLabel = selectedDate === todayInKorea() ? "오늘의 공부" : "선택한 날짜의 공부";
-  const taskMarkup = tasks.length
-    ? `<div class="task-list">${tasks.map((task) => `
-        <label class="task ${progress[task.id] ? "is-done" : ""}">
-          <input type="checkbox" data-task="${escapeHTML(task.id)}" ${progress[task.id] ? "checked" : ""} />
-          <span>${escapeHTML(task.label)}</span>
-        </label>`).join("")}</div>`
-    : `<div class="rest-note">이 날짜에는 계획된 강의가 없어요. 휴식하거나 밀린 진도를 정리해도 좋습니다.</div>`;
-
-  return `<section class="card today-card">
-    <div class="section-heading">
-      <div><p class="eyebrow">${dayLabel}</p><h2>${formatDate(selectedDate)}</h2></div>
-      <span class="subject-pill">${plan ? escapeHTML(plan.subject.name) : "휴식일"}</span>
-    </div>
-    <div class="progress-label"><span>달성률</span><strong>${percent}%</strong></div>
-    ${progressBar(percent, "선택 날짜 달성률")}
-    ${taskMarkup}
-    <div class="button-row">
-      <button class="button button-primary" id="complete-day" ${tasks.length ? "" : "disabled"}>모두 완료</button>
-      <button class="button" id="reset-day" ${tasks.length ? "" : "disabled"}>초기화</button>
-    </div>
-  </section>`;
+  const dayTasks = tasksOn(selectedDate);
+  const completed = dayTasks.filter((task) => progress[task.id]).length;
+  const percent = dayTasks.length ? Math.round(completed / dayTasks.length * 100) : 0;
+  const names = [...new Set(dayTasks.map((task) => subjects.find((s) => s.id === task.subject_id)?.name).filter(Boolean))];
+  const lectureTasks = dayTasks.filter((task) => task.type === "lecture");
+  const studyMinutes = lectureTasks.reduce((sum, task) => sum + Number(subjects.find((subject) => subject.id === task.subject_id)?.avg_minutes || 60), 0);
+  const hours = Math.floor(studyMinutes / 60); const minutes = studyMinutes % 60;
+  const timeLabel = hours ? `${hours}시간${minutes ? ` ${minutes}분` : ""}` : `${minutes}분`;
+  return `<section class="card today-card"><div class="section-heading"><div><p class="eyebrow">${selectedDate === todayInKorea() ? "오늘의 공부" : "선택한 날짜의 공부"}</p><h2>${formatDate(selectedDate)}</h2></div><span class="subject-pill">${escapeHTML(names.join(" · ") || "휴식일")}</span></div>${dayTasks.length ? `<div class="study-time"><span>예상 강의 시간</span><strong>약 ${timeLabel}</strong><small>${lectureTasks.length}강 · OX 복습 시간 제외</small></div>` : ""}<div class="progress-label"><span>달성률</span><strong>${percent}%</strong></div>${progressBar(percent, "선택 날짜 달성률")}${dayTasks.length ? `<div class="task-list">${dayTasks.map((task) => `<label class="task ${progress[task.id] ? "is-done" : ""}"><input type="checkbox" data-task="${task.id}" ${progress[task.id] ? "checked" : ""}><span>${escapeHTML(displayLabel(task))}</span></label>`).join("")}</div>` : '<div class="rest-note">이 날짜에는 계획된 강의가 없어요. 휴식하거나 밀린 진도를 정리해도 좋습니다.</div>'}<div class="button-row"><button class="button button-primary" id="complete-day" ${dayTasks.length ? "" : "disabled"}>모두 완료</button><button class="button" id="reset-day" ${dayTasks.length ? "" : "disabled"}>초기화</button></div></section>`;
 }
-
 function renderOverview() {
-  const done = allCompletedLectureCount();
-  const remaining = TOTAL_LECTURES - done;
-  const overall = Math.round((done / TOTAL_LECTURES) * 100);
-  const subjectMarkup = subjects.map((subject) => {
-    const count = subject.end - subject.start + 1;
-    const subjectDone = completedLectureCount(subject);
-    const percent = Math.round((subjectDone / count) * 100);
-    return `<div class="subject-progress">
-      <div class="progress-label"><strong>${escapeHTML(subject.name)}</strong><span>${subjectDone}/${count}강 · ${percent}%</span></div>
-      ${progressBar(percent, `${subject.name} 진도율`)}
-    </div>`;
-  }).join("");
-  const daysLeft = daysBetween(todayInKorea(), END_DATE);
-  const ddayLabel = daysLeft > 0 ? `D-${daysLeft}` : daysLeft === 0 ? "D-DAY" : `D+${Math.abs(daysLeft)}`;
-  const targetMessage = daysLeft >= 0
-    ? `완강 목표일까지 <strong>${daysLeft}일</strong> 남았습니다.`
-    : `완강 목표일이 <strong>${Math.abs(daysLeft)}일</strong> 지났습니다.`;
-
-  return `<section class="card overview-card">
-    <div class="section-heading"><div><p class="eyebrow">전체 진도</p><h2>과목별 현황</h2></div><span class="dday">${ddayLabel}</span></div>
-    ${subjectMarkup}
-    <div class="stats">
-      <div><span>완료 강의</span><strong>${done}</strong></div>
-      <div><span>남은 강의</span><strong>${remaining}</strong></div>
-      <div><span>전체 진도</span><strong>${overall}%</strong></div>
-    </div>
-    <p class="target-message">${targetMessage} 남은 강의 ${remaining}강</p>
-  </section>`;
+  const total = subjects.reduce((n, s) => n + Number(s.lecture_count), 0);
+  const done = tasks.filter((task) => task.type === "lecture" && progress[task.id]).length;
+  const remaining = Math.max(total - done, 0);
+  const percent = total ? Math.round(done / total * 100) : 0;
+  const subjectMarkup = subjects.map((subject) => { const count = Number(subject.lecture_count); const countDone = subjectDoneCount(subject); const p = count ? Math.round(countDone / count * 100) : 0; return `<div class="subject-progress" style="--subject-color:${escapeHTML(subject.color || "#397653")}"><div class="progress-label"><strong>${escapeHTML(subject.name)}</strong><span>${countDone}/${count}강 · ${p}%</span></div>${progressBar(p, subject.name + " 진도율")}</div>`; }).join("");
+  const left = daysBetween(todayInKorea(), plan.target_date);
+  const dday = left > 0 ? `D-${left}` : left === 0 ? "D-DAY" : `D+${Math.abs(left)}`;
+  return `<section class="card overview-card"><div class="section-heading"><div><p class="eyebrow">전체 진도</p><h2>과목별 현황</h2></div><span class="dday">${dday}</span></div>${subjectMarkup}<div class="stats"><div><span>완료 강의</span><strong>${done}</strong></div><div><span>남은 강의</span><strong>${remaining}</strong></div><div><span>전체 진도</span><strong>${percent}%</strong></div></div><p class="target-message">완강 목표일까지 <strong>${Math.abs(left)}일</strong> ${left >= 0 ? "남았습니다." : "지났습니다."} 남은 강의 ${remaining}강</p></section>`;
 }
-
 function monthMarkup(year, month) {
-  const first = new Date(Date.UTC(year, month, 1, 12));
-  const days = new Date(Date.UTC(year, month + 1, 0, 12)).getUTCDate();
-  const leading = first.getUTCDay();
-  const cells = Array.from({ length: leading }, () => '<span class="calendar-empty"></span>');
-  for (let day = 1; day <= days; day += 1) {
-    const date = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    const tasks = tasksForDate(date);
-    const isDone = tasks.length > 0 && tasks.every((task) => progress[task.id]);
-    const classes = ["calendar-day", tasks.length ? "has-plan" : "", isDone ? "is-done" : "", date === selectedDate ? "is-selected" : "", date === todayInKorea() ? "is-today" : ""].filter(Boolean).join(" ");
-    cells.push(`<button class="${classes}" data-date="${date}" aria-label="${formatDate(date, { month: "long", day: "numeric" })}${tasks.length ? ", 학습 계획 있음" : ", 휴식일"}"><span>${day}</span>${tasks.length ? '<i aria-hidden="true"></i>' : ""}</button>`);
+  const first = new Date(Date.UTC(year, month, 1, 12)); const count = new Date(Date.UTC(year, month + 1, 0, 12)).getUTCDate();
+  const cells = Array.from({ length: first.getUTCDay() }, () => '<span class="calendar-empty"></span>');
+  for (let day = 1; day <= count; day++) {
+    const date = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`; const dayTasks = tasksOn(date);
+    const done = dayTasks.length && dayTasks.every((task) => progress[task.id]);
+    const daySubjects = [...new Set(dayTasks.map((task) => task.subject_id))].map((id) => subjects.find((subject) => subject.id === id)).filter(Boolean);
+    const colors = daySubjects.map((subject) => subject.color || subjectColors[0]);
+    const dayColor = colors.length > 1 ? `linear-gradient(135deg, ${colors.map((color, i) => `${color} ${i * 100 / colors.length}% ${(i + 1) * 100 / colors.length}%`).join(", ")})` : colors[0];
+    const classes = ["calendar-day", dayTasks.length ? "has-plan" : "", done ? "is-done" : "", date === selectedDate ? "is-selected" : "", date === todayInKorea() ? "is-today" : ""].filter(Boolean).join(" ");
+    const subjectNames = daySubjects.map((subject) => subject.name).join(", ");
+    cells.push(`<button class="${classes}" style="${dayColor ? `--day-color:${dayColor}` : ""}" data-date="${date}" aria-label="${formatDate(date, { month: "long", day: "numeric" })}${subjectNames ? `, ${escapeHTML(subjectNames)} 학습` : ", 휴식일"}"><span>${day}</span>${dayTasks.length ? '<i aria-hidden="true"></i>' : ""}</button>`);
   }
   return `<div class="month"><h3>${year}년 ${month + 1}월</h3><div class="calendar-grid">${weekdays.map((day) => `<span class="weekday">${day}</span>`).join("")}${cells.join("")}</div></div>`;
 }
-
-function renderCalendar() {
-  return `<section class="card calendar-card"><div class="section-heading"><div><p class="eyebrow">학습 일정</p><h2>캘린더</h2></div><span class="calendar-key"><i></i> 계획일</span></div>
-    <div class="months">${monthMarkup(2026, 10)}${monthMarkup(2026, 11)}${monthMarkup(2027, 0)}</div>
-    <p class="calendar-help">날짜를 누르면 해당 날짜의 계획을 볼 수 있어요. 날짜 기준은 한국 시간입니다.</p>
-  </section>`;
-}
-
 function render() {
-  const app = document.querySelector("#app");
-  app.innerHTML = `<main class="page-shell">
-    <header class="page-header"><div><p class="eyebrow">소방시험 준비</p><h1>Study Planner</h1><p class="subtitle">297강 · 완강 목표 ${formatDate(END_DATE, { year: "numeric", month: "long", day: "numeric" })}</p></div><span class="timezone-badge">한국 시간 · KST</span></header>
-    <div class="dashboard">${renderTasks()}${renderOverview()}${renderCalendar()}</div>
-    <footer>학습 체크 내용은 현재 이 브라우저에 저장됩니다. 다른 기기와 동기화하려면 추후 계정 및 클라우드 저장 기능이 필요합니다.</footer>
-  </main>`;
-
-  app.querySelectorAll("[data-task]").forEach((input) => input.addEventListener("change", (event) => {
-    const taskId = event.currentTarget.dataset.task;
-    if (event.currentTarget.checked) progress[taskId] = true;
-    else delete progress[taskId];
-    saveProgress();
-    render();
-  }));
-  app.querySelector("#complete-day")?.addEventListener("click", () => {
-    tasksForDate(selectedDate).forEach((task) => { progress[task.id] = true; });
-    saveProgress();
-    render();
-  });
-  app.querySelector("#reset-day")?.addEventListener("click", () => {
-    tasksForDate(selectedDate).forEach((task) => { delete progress[task.id]; });
-    saveProgress();
-    render();
-  });
-  app.querySelectorAll("[data-date]").forEach((button) => button.addEventListener("click", () => {
-    selectedDate = button.dataset.date;
-    render();
-  }));
+  if (!user) { authView(); return; }
+  if (!plan) { onboardingView(); return; }
+  const start = dateFromISO(plan.start_date); const end = dateFromISO(plan.target_date);
+  const months = [];
+  for (let d = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1, 12)); d <= end; d.setUTCMonth(d.getUTCMonth() + 1)) months.push(monthMarkup(d.getUTCFullYear(), d.getUTCMonth()));
+  const legend = subjects.map((subject) => `<span><i style="background:${escapeHTML(subject.color || "#ddd")}"></i>${escapeHTML(subject.name)}</span>`).join("");
+  document.querySelector("#app").innerHTML = `<main class="page-shell"><header class="page-header"><div><p class="eyebrow">나의 학습 공간 · ${escapeHTML(plan.title)}</p><h1>Study Planner</h1><p class="subtitle">${subjects.reduce((n,s)=>n+Number(s.lecture_count),0)}강 · 완강 목표 ${formatDate(plan.target_date,{year:"numeric",month:"long",day:"numeric"})}</p></div><div class="account-tools"><span class="timezone-badge">한국 시간 · KST</span><span class="sync-state">${escapeHTML(syncMessage)}</span><button class="button" id="sign-out">로그아웃</button></div></header><div class="dashboard">${renderTasks()}${renderOverview()}<section class="card calendar-card"><div class="section-heading"><div><p class="eyebrow">학습 일정</p><h2>캘린더</h2></div><span class="calendar-key">${legend}</span></div><div class="months">${months.join("")}</div><p class="calendar-help">날짜를 누르면 해당 날짜의 계획을 볼 수 있어요. 날짜 기준은 한국 시간입니다. 평일 기준으로 계획을 만들었습니다.</p></section></div><footer>${supabase ? "학습 기록은 계정에 안전하게 저장되며, 로그인하면 다른 기기에서도 이어집니다." : "클라우드 연결 전이어서 현재 기록은 이 브라우저에 저장됩니다."} 강의 시간은 과목별 설정값으로 계산한 예상치이며, 초기값은 1강당 60분입니다.</footer></main>`;
+  document.querySelector("#sign-out").addEventListener("click", signOut);
+  document.querySelectorAll("[data-task]").forEach((input) => input.addEventListener("change", (event) => setTask(event.currentTarget.dataset.task, event.currentTarget.checked)));
+  document.querySelector("#complete-day").addEventListener("click", async () => { await setTasks(tasksOn(selectedDate).map((task) => task.id), true); });
+  document.querySelector("#reset-day").addEventListener("click", async () => { await setTasks(tasksOn(selectedDate).map((task) => task.id), false); });
+  document.querySelectorAll("[data-date]").forEach((button) => button.addEventListener("click", () => { selectedDate = button.dataset.date; render(); }));
 }
 
-render();
+async function start() {
+  const configResponse = await fetch("/api/study-planner-config").catch(() => null);
+  const config = configResponse?.ok ? await configResponse.json() : {};
+  if (config.url && config.anonKey) {
+    const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
+    supabase = createClient(config.url, config.anonKey);
+  }
+  if (supabase) {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+      user = session.user;
+      try { await loadUserData(); } catch (error) { authView(error.message); return; }
+    }
+    supabase.auth.onAuthStateChange(async (_event, session) => {
+      user = session?.user || null;
+      if (user) { try { await loadUserData(); } catch (error) { authView(error.message); return; } }
+      else { plan = null; render(); }
+    });
+  } else {
+    const local = readLocal(LOCAL_PLAN_KEY, null);
+    user = { id: "local" };
+    if (local?.plan) ({ plan, subjects, tasks, progress } = local);
+    else { plan = { id: "local-plan", title: "소방시험 Study Planner", start_date: "2026-11-20", target_date: END_DATE }; subjects = starterSubjects.map((s, i) => ({ id: String(i), name: s.name, lecture_count: s.end - s.start + 1, avg_minutes: 60, color: subjectColors[i] })); tasks = makeStarterTasks(subjects, true); progress = readLocal(STORAGE_KEY, {}); }
+    if (!plan) onboardingView(); else render();
+    return;
+  }
+  render();
+}
+start();

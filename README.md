@@ -25,6 +25,7 @@ npm run dev
 
 - GitHub 레포 연결 후 Vercel에서 Import — Focus Disc와 동일한 방식
 - 매일 아침 커밋 → Vercel이 자동으로 프로덕션 반영
+- Study Planner의 계정 저장을 켤 때는 Supabase 프로젝트의 SQL을 적용하고 Vercel 환경 변수 `SUPABASE_URL`, `SUPABASE_ANON_KEY`를 설정
 
 ## 폴더 구조
 

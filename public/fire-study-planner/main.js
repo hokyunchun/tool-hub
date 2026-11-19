@@ -48,10 +48,10 @@ function makeStarterTasks(subjectRows, localIds = false) {
   }
   return rows;
 }
-function makeEvenSchedule(subjectRows, startDate, endDate) {
+function makeEvenSchedule(subjectRows, startDate, endDate, includeWeekends = false) {
   const days = [];
   for (let d = dateFromISO(startDate); d <= dateFromISO(endDate); d.setUTCDate(d.getUTCDate() + 1)) {
-    if (![0, 6].includes(d.getUTCDay())) days.push(d.toISOString().slice(0, 10));
+    if (includeWeekends || ![0, 6].includes(d.getUTCDay())) days.push(d.toISOString().slice(0, 10));
   }
   if (!days.length) throw new Error("목표 날짜 사이에 평일이 없습니다. 날짜를 확인해 주세요.");
   const rows = [];
@@ -70,7 +70,7 @@ function makeEvenSchedule(subjectRows, startDate, endDate) {
 }
 function authView(message = "") {
   document.querySelector("#app").innerHTML = `<main class="page-shell"><header class="page-header"><div><p class="eyebrow">공부 기록을 여러 기기에서 이어가세요</p><h1>Study Planner</h1><p class="subtitle">계정으로 로그인하면 기록이 클라우드에 저장됩니다.</p></div><span class="timezone-badge">한국 시간 · KST</span></header>
-  <section class="card auth-card"><h2>내 학습 공간</h2><p class="subtitle">이메일과 비밀번호로 가입하거나 로그인하세요.</p><form id="auth-form"><label class="field">이메일<input name="email" type="email" autocomplete="email" required placeholder="name@example.com"></label><label class="field">비밀번호<input name="password" type="password" minlength="8" autocomplete="current-password" required placeholder="8자 이상"></label><div class="button-row"><button class="button button-primary" name="action" value="login">로그인</button><button class="button" name="action" value="signup">새 계정 만들기</button></div></form><p class="notice" role="status">${escapeHTML(message || (supabase ? "" : "클라우드 연결 설정 전입니다. 현재는 이 기기에만 저장됩니다."))}</p></section></main>`;
+  <section class="card auth-card"><h2>내 학습 공간</h2><p class="subtitle">처음이라면 새 계정을 만드세요. 현재 로그인 ID는 이메일 주소입니다. admin/admin처럼 공개된 비밀번호 대신 본인만 아는 비밀번호를 설정해 주세요.</p><form id="auth-form"><label class="field">ID (이메일 주소)<input name="email" type="email" autocomplete="username" required placeholder="가입에 사용할 이메일"></label><label class="field">비밀번호<input name="password" type="password" minlength="8" autocomplete="current-password" required placeholder="8자 이상"></label><div class="button-row"><button class="button button-primary" name="action" value="signup">새 계정 만들기</button><button class="button" name="action" value="login">로그인</button></div></form><p class="notice" role="status">${escapeHTML(message || (supabase ? "새 계정 만들기 → 이메일 확인 → 이 화면에서 로그인 순서로 진행하세요." : "클라우드 연결 설정 전입니다. 현재는 이 기기에만 저장됩니다."))}</p></section></main>`;
   document.querySelector("#auth-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const action = event.submitter?.value || "login";
@@ -85,24 +85,20 @@ function authView(message = "") {
 }
 function onboardingView(message = "") {
   const today = todayInKorea();
-  document.querySelector("#app").innerHTML = `<main class="page-shell"><header class="page-header"><div><p class="eyebrow">나만의 학습 계획</p><h1>Study Planner</h1><p class="subtitle">과목별 강의 수와 완강 목표일을 입력하면 평일 기준으로 계획을 만듭니다.</p></div><button class="button" id="sign-out">로그아웃</button></header>
-  <div class="setup-grid"><section class="card"><h2>기존 소방시험 계획</h2><p>행정법총론, 소방관계법규, 소방학개론 297강과 기존 날짜별 일정을 가져옵니다.</p><button class="button button-primary" id="use-starter">기존 297강 계획 시작</button></section>
-  <section class="card"><h2>내 강의로 새 계획 만들기</h2><form id="plan-form"><label class="field">계획 이름<input name="title" required value="나의 학습 계획"></label><div class="field-row"><label class="field">시작일<input name="start" type="date" required value="${today}"></label><label class="field">완강 목표일<input name="end" type="date" required value="${escapeHTML(END_DATE)}"></label></div><div id="subject-fields"><div class="subject-input-row"><input name="subjectName" required placeholder="과목명"><input name="lectureCount" type="number" min="1" required placeholder="강의 수"><label class="minutes-field"><input name="avgMinutes" type="number" min="1" max="600" value="60" required aria-label="강의 한 편의 평균 시간"><span>분/강</span></label><button type="button" class="button remove-subject" aria-label="과목 삭제">×</button></div></div><div class="button-row"><button class="button" type="button" id="add-subject">과목 추가</button><button class="button button-primary" type="submit">계획 만들기</button></div></form></section></div><p class="notice" role="status">${escapeHTML(message)}</p></main>`;
+  const blankSubject = '<div class="subject-input-row"><input name="subjectName" required placeholder="과목명"><input name="lectureCount" type="number" min="1" required placeholder="강의 수"><label class="minutes-field"><input name="avgMinutes" type="number" min="1" max="600" value="60" required aria-label="강의 한 편의 평균 시간"><span>분/강</span></label><button type="button" class="button remove-subject" aria-label="과목 삭제">×</button></div>';
+  document.querySelector("#app").innerHTML = `<main class="page-shell"><header class="page-header"><div><p class="eyebrow">나만의 학습 계획</p><h1>Study Planner</h1><p class="subtitle">과목과 강의 수, 한 강의 시간, 완강 목표일을 입력하면 계정에 맞는 일정표를 만듭니다.</p></div><button class="button" id="sign-out">로그아웃</button></header>
+  <section class="card setup-card"><div class="setup-heading"><div><h2>학습 계획 설정</h2><p>입력한 정보와 완료 기록은 현재 계정에 저장됩니다. 다른 계정의 계획과 기록은 보이지 않습니다.</p></div><button class="button" type="button" id="load-fire-template">소방시험 과목 채우기</button></div><form id="plan-form"><label class="field">계획 이름<input name="title" required value="나의 학습 계획"></label><div class="field-row"><label class="field">공부 시작일<input name="start" type="date" required value="${today}"></label><label class="field">완강 목표일<input name="end" type="date" required value="${escapeHTML(END_DATE)}"></label></div><div class="field"><span>과목별 강의 정보</span><div id="subject-fields">${blankSubject}</div></div><label class="weekend-option"><input name="includeWeekends" type="checkbox"><span><strong>주말에도 공부하기</strong><small>선택하면 토요일과 일요일도 일정에 포함합니다.</small></span></label><div class="button-row"><button class="button" type="button" id="add-subject">과목 추가</button><button class="button button-primary" type="submit">내 학습 일정 만들기</button></div></form></section><p class="notice" role="status">${escapeHTML(message)}</p></main>`;
   document.querySelector("#sign-out").addEventListener("click", signOut);
   document.querySelector("#add-subject").addEventListener("click", () => {
-    const row = document.createElement("div"); row.className = "subject-input-row";
-    row.innerHTML = '<input name="subjectName" required placeholder="과목명"><input name="lectureCount" type="number" min="1" required placeholder="강의 수"><label class="minutes-field"><input name="avgMinutes" type="number" min="1" max="600" value="60" required aria-label="강의 한 편의 평균 시간"><span>분/강</span></label><button type="button" class="button remove-subject" aria-label="과목 삭제">×</button>';
-    document.querySelector("#subject-fields").append(row);
-    row.querySelector(".remove-subject").addEventListener("click", () => row.remove());
+    const template = document.createElement("template"); template.innerHTML = blankSubject;
+    const newRow = template.content.firstElementChild;
+    document.querySelector("#subject-fields").appendChild(newRow);
+    newRow.querySelector(".remove-subject").addEventListener("click", () => { if (document.querySelectorAll(".subject-input-row").length > 1) newRow.remove(); });
   });
   document.querySelectorAll(".remove-subject").forEach((button) => button.addEventListener("click", () => { if (document.querySelectorAll(".subject-input-row").length > 1) button.closest(".subject-input-row").remove(); }));
-  document.querySelector("#use-starter").addEventListener("click", async () => {
-    const legacy = readLocal(STORAGE_KEY, {});
-    const newPlan = { id: crypto.randomUUID(), user_id: user.id, title: "소방시험 Study Planner", start_date: "2026-11-20", target_date: END_DATE };
-    const subjectRows = starterSubjects.map((item, index) => ({ id: crypto.randomUUID(), user_id: user.id, plan_id: newPlan.id, name: item.name, lecture_count: item.end - item.start + 1, avg_minutes: starterMinutes[index], color: subjectColors[index], sort_order: index }));
-    const taskRows = makeStarterTasks(subjectRows);
-    try { await saveNewPlan(newPlan, subjectRows, taskRows, legacy); }
-    catch (error) { onboardingView(error.message); }
+  document.querySelector("#load-fire-template").addEventListener("click", () => {
+    document.querySelector("#subject-fields").innerHTML = starterSubjects.map((item, index) => `<div class="subject-input-row"><input name="subjectName" required value="${escapeHTML(item.name)}" aria-label="과목명"><input name="lectureCount" type="number" min="1" required value="${item.end - item.start + 1}" aria-label="강의 수"><label class="minutes-field"><input name="avgMinutes" type="number" min="1" max="600" value="${starterMinutes[index]}" required aria-label="강의 한 편의 평균 시간"><span>분/강</span></label><button type="button" class="button remove-subject" aria-label="과목 삭제">×</button></div>`).join("");
+    document.querySelectorAll(".remove-subject").forEach((button) => button.addEventListener("click", () => { if (document.querySelectorAll(".subject-input-row").length > 1) button.closest(".subject-input-row").remove(); }));
   });
   document.querySelector("#plan-form").addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -110,14 +106,16 @@ function onboardingView(message = "") {
     const title = String(form.get("title")).trim();
     const start = String(form.get("start"));
     const end = String(form.get("end"));
-    if (end < start) { onboardingView("완강 목표일은 시작일 이후로 설정해 주세요."); return; }
+    if (end < start) { document.querySelector(".notice").textContent = "완강 목표일은 시작일 이후로 설정해 주세요."; return; }
     const names = form.getAll("subjectName").map((value) => String(value).trim());
     const counts = form.getAll("lectureCount").map(Number);
-    const newPlan = { id: crypto.randomUUID(), user_id: user.id, title, start_date: start, target_date: end };
+    if (!names.length || names.some((name) => !name) || counts.some((count) => count < 1)) { document.querySelector(".notice").textContent = "과목 이름과 강의 수를 확인해 주세요."; return; }
+    const includeWeekends = form.get("includeWeekends") === "on";
+    const newPlan = { id: crypto.randomUUID(), user_id: user.id, title, start_date: start, target_date: end, include_weekends: includeWeekends };
     const minutes = form.getAll("avgMinutes").map(Number);
     const subjectRows = names.map((name, index) => ({ id: crypto.randomUUID(), user_id: user.id, plan_id: newPlan.id, name, lecture_count: counts[index], avg_minutes: minutes[index] || 60, color: subjectColors[index % subjectColors.length], sort_order: index }));
-    try { await saveNewPlan(newPlan, subjectRows, makeEvenSchedule(subjectRows, start, end), {}); }
-    catch (error) { onboardingView(error.message); }
+    try { await saveNewPlan(newPlan, subjectRows, makeEvenSchedule(subjectRows, start, end, includeWeekends), {}); }
+    catch (error) { document.querySelector(".notice").textContent = error.message; }
   });
 }
 async function saveNewPlan(newPlan, subjectRows, taskRows, oldProgress) {
@@ -227,7 +225,7 @@ function render() {
   const months = [];
   for (let d = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1, 12)); d <= end; d.setUTCMonth(d.getUTCMonth() + 1)) months.push(monthMarkup(d.getUTCFullYear(), d.getUTCMonth()));
   const legend = subjects.map((subject) => `<span><i style="background:${escapeHTML(subject.color || "#ddd")}"></i>${escapeHTML(subject.name)}</span>`).join("");
-  document.querySelector("#app").innerHTML = `<main class="page-shell"><header class="page-header"><div><p class="eyebrow">나의 학습 공간 · ${escapeHTML(plan.title)}</p><h1>Study Planner</h1><p class="subtitle">${subjects.reduce((n,s)=>n+Number(s.lecture_count),0)}강 · 완강 목표 ${formatDate(plan.target_date,{year:"numeric",month:"long",day:"numeric"})}</p></div><div class="account-tools"><span class="timezone-badge">한국 시간 · KST</span><span class="sync-state">${escapeHTML(syncMessage)}</span><button class="button" id="sign-out">로그아웃</button></div></header><div class="dashboard">${renderTasks()}${renderOverview()}<section class="card calendar-card"><div class="section-heading"><div><p class="eyebrow">학습 일정</p><h2>캘린더</h2></div><span class="calendar-key">${legend}</span></div><div class="months">${months.join("")}</div><p class="calendar-help">날짜를 누르면 해당 날짜의 계획을 볼 수 있어요. 날짜 기준은 한국 시간입니다. 평일 기준으로 계획을 만들었습니다.</p></section></div><footer>${supabase ? "학습 기록은 계정에 안전하게 저장되며, 로그인하면 다른 기기에서도 이어집니다." : "클라우드 연결 전이어서 현재 기록은 이 브라우저에 저장됩니다."} 강의 시간은 제공된 강의 기록의 과목별 평균으로 추산하며, OX 복습 시간은 제외합니다.</footer></main>`;
+  document.querySelector("#app").innerHTML = `<main class="page-shell"><header class="page-header"><div><p class="eyebrow">나의 학습 공간 · ${escapeHTML(plan.title)}</p><h1>Study Planner</h1><p class="subtitle">${subjects.reduce((n,s)=>n+Number(s.lecture_count),0)}강 · 완강 목표 ${formatDate(plan.target_date,{year:"numeric",month:"long",day:"numeric"})} · ${plan.include_weekends ? "주말 포함" : "평일만 공부"}</p></div><div class="account-tools"><span class="timezone-badge">한국 시간 · KST</span><span class="sync-state">${escapeHTML(syncMessage)}</span><button class="button" id="sign-out">로그아웃</button></div></header><div class="dashboard">${renderTasks()}${renderOverview()}<section class="card calendar-card"><div class="section-heading"><div><p class="eyebrow">학습 일정</p><h2>캘린더</h2></div><span class="calendar-key">${legend}</span></div><div class="months">${months.join("")}</div><p class="calendar-help">날짜를 누르면 해당 날짜의 계획을 볼 수 있어요. 날짜 기준은 한국 시간입니다. ${plan.include_weekends ? "주말도 일정에 포함했습니다." : "평일만 공부하도록 설정했습니다."}</p></section></div><footer>${supabase ? "학습 기록은 계정에 안전하게 저장되며, 로그인하면 다른 기기에서도 이어집니다." : "클라우드 연결 전이어서 현재 기록은 이 브라우저에 저장됩니다."} 강의 시간은 입력한 과목별 평균으로 추산하며, OX 복습 시간은 제외합니다.</footer></main>`;
   document.querySelector("#sign-out").addEventListener("click", signOut);
   document.querySelectorAll("[data-task]").forEach((input) => input.addEventListener("change", (event) => setTask(event.currentTarget.dataset.task, event.currentTarget.checked)));
   document.querySelector("#complete-day").addEventListener("click", async () => { await setTasks(tasksOn(selectedDate).map((task) => task.id), true); });

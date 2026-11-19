@@ -25,3 +25,13 @@
 - 사용자가 만든 Supabase Toolhub 프로젝트에 네 테이블, RLS 정책, 로그인 사용자 권한을 적용했다. 보안 Advisor 결과에는 이슈가 없었다.
 - Supabase URL과 publishable key를 Vercel의 프로덕션·프리뷰·개발 환경에 등록했다.
 - 가입 확인 메일의 이동 주소를 위해 Supabase Authentication의 Site URL에 https://www.nomadho.com 설정이 필요하다.
+
+## 2026-11-19 — 다크 UI와 계정별 계획 설정
+
+- Tool Hub 홈을 다크 테마로 바꾸고, 왼쪽에 Overview와 Productivity, Finance, Learning 메뉴를 배치했다.
+- 컬러 이모지 대신 단색 선 아이콘을 사용하고, 도구 이름과 설명은 한국어로 유지했다.
+- 새 계정은 로그인 후 자기 계획 설정 화면으로 이동한다. 과목, 강의 수, 한 강의 평균 시간, 시작일, 목표일, 주말 공부 여부를 정해 일정을 만든다.
+- 소방시험 과목 채우기 버튼은 기존 297강 과목과 평균 시간을 입력란에 넣는다. 사용자가 고친 값을 시작일과 목표일에 맞춰 새로 배치한다.
+- `study_plans.include_weekends`를 추가해 주말 선택을 저장한다. 기존 행은 `false`로 처리한다.
+- 완료 기록은 로그인한 Supabase 계정의 `user_id`로 저장되며, RLS로 다른 계정의 자료에 접근하지 못하게 한다.
+- 현재 인증 ID는 이메일 주소다. 사용자명만 쓰는 로그인은 계정 복구와 사용자명 연결 방식을 정한 뒤 별도 구현한다.

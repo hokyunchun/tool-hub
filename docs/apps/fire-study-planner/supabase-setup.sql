@@ -5,10 +5,14 @@ create table if not exists public.study_plans (
   title text not null,
   start_date date not null,
   target_date date not null,
+  include_weekends boolean not null default false,
   created_at timestamptz not null default now(),
   constraint study_plans_date_order check (target_date >= start_date),
   constraint study_plans_id_user_unique unique (id, user_id)
 );
+
+alter table public.study_plans
+  add column if not exists include_weekends boolean not null default false;
 
 create table if not exists public.study_subjects (
   id uuid primary key,

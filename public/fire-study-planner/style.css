@@ -75,6 +75,15 @@ footer{margin-top:18px;color:#858881;font-size:11px;line-height:1.6}
 .field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .setup-grid{display:grid;grid-template-columns:1fr 1.4fr;gap:16px}
 .setup-grid>.card p{color:var(--muted);font-size:13px;line-height:1.6}
+.setup-card{max-width:900px;margin:20px auto}
+.setup-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:8px}
+.setup-heading h2{margin-bottom:6px;font-size:20px}
+.setup-heading p{margin:0;color:var(--muted);font-size:13px;line-height:1.6}
+.weekend-option{display:flex;align-items:flex-start;gap:10px;margin-top:18px;padding:14px;border:1px solid var(--line);border-radius:12px;cursor:pointer}
+.weekend-option input{width:17px;height:17px;margin:1px 0 0;accent-color:#252723}
+.weekend-option strong,.weekend-option small{display:block}
+.weekend-option strong{font-size:12px}
+.weekend-option small{margin-top:4px;color:var(--muted);font-size:11px}
 .subject-input-row{display:grid;grid-template-columns:minmax(100px,1fr) 100px 95px 38px;gap:7px;margin-top:9px}
 .minutes-field{display:flex;align-items:center;gap:4px;color:var(--muted);font-size:10px}
 .minutes-field input{width:58px;padding:10px 6px}
@@ -83,5 +92,5 @@ footer{margin-top:18px;color:#858881;font-size:11px;line-height:1.6}
 .sync-state{color:var(--muted);font-size:10px}
 
 @media(max-width:760px){.page-shell{padding:28px 16px 38px}.page-header{align-items:flex-start}h1{font-size:28px}.timezone-badge{padding:8px 10px;font-size:10px}.dashboard{grid-template-columns:1fr}.calendar-card{grid-column:auto}.months{grid-template-columns:1fr;gap:22px}.month{max-width:430px;width:100%;margin:0 auto}.calendar-grid{gap:5px}.calendar-day,.calendar-empty{font-size:12px}.calendar-day i{bottom:5px}.card{padding:18px;border-radius:17px}}
-@media(max-width:760px){.setup-grid{grid-template-columns:1fr}.account-tools{justify-content:flex-start}.subject-input-row{grid-template-columns:minmax(90px,1fr) 74px 84px 34px;gap:5px}.minutes-field input{width:51px}.calendar-key{justify-content:flex-start}}
+@media(max-width:760px){.setup-grid{grid-template-columns:1fr}.setup-heading{flex-direction:column}.account-tools{justify-content:flex-start}.subject-input-row{grid-template-columns:minmax(90px,1fr) 74px 84px 34px;gap:5px}.minutes-field input{width:51px}.calendar-key{justify-content:flex-start}}
 @media(max-width:390px){.page-header{gap:8px}.timezone-badge{font-size:9px;padding:7px 8px}.section-heading h2{font-size:18px}.card{padding:15px}.stats strong{font-size:19px}}

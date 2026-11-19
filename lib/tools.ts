@@ -3,7 +3,6 @@ export type Tool = {
   name: string;        // 표시 이름
   description: string; // 한 줄 설명
   category: string;    // 카테고리 (생산성, 재무, 텍스트 등)
-  emoji: string;        // 목록에서 보일 아이콘
   status: "live" | "wip"; // 배포 완료 / 제작중
 };
 
@@ -15,7 +14,6 @@ export const tools: Tool[] = [
     name: "Focus Disc",
     description: "실물 타임타이머를 닮은 직관적 뽀모도로 타이머. AI 코멘트 지원.",
     category: "생산성",
-    emoji: "⏱️",
     status: "live",
   },
   {
@@ -23,7 +21,6 @@ export const tools: Tool[] = [
     name: "Founder Pipeline",
     description: "문제정의부터 가설검증까지, 매일 클릭하며 실행하는 1인 창업 파이프라인.",
     category: "생산성",
-    emoji: "🧭",
     status: "live",
   },
   {
@@ -31,7 +28,6 @@ export const tools: Tool[] = [
     name: "일당기록",
     description: "인력사무소별 일당을 토글로 기록하고 이번달 현황을 대시보드로 확인.",
     category: "재무",
-    emoji: "💰",
     status: "live",
   },
   {
@@ -39,7 +35,6 @@ export const tools: Tool[] = [
     name: "소방시험 Study Planner",
     description: "297강 강의 계획, OX 복습, 과목별 진도를 한곳에서 관리.",
     category: "학습",
-    emoji: "🚒",
     status: "live",
   },
 ];

@@ -9,7 +9,7 @@ export const metadata = {
 export default function WorkLogPage() {
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-2">💰 일당기록</h1>
+      <h1 className="text-2xl font-bold mb-2">일당기록</h1>
       <p className="text-neutral-500 mb-8">
         어디서 일했는지, 얼마 받았는지 토글 두 번으로 기록. 구글시트에 자동 저장됩니다.
       </p>

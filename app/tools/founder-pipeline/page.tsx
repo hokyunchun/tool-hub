@@ -10,7 +10,7 @@ export const metadata = {
 export default function FounderPipelinePage() {
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-2">🧭 Founder Pipeline</h1>
+      <h1 className="text-2xl font-bold mb-2">Founder Pipeline</h1>
       <p className="text-neutral-500 mb-8">
         판정이 아니라 실행. 매일 한 단계씩 클릭하고 기록하며 앞으로 나아갑니다.
       </p>

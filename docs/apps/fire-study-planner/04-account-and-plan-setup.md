@@ -1,12 +1,27 @@
 # 계정별 학습 계획 설정
 
-## 로그인
+## 가입과 로그인
 
-- 사용자가 입력하는 로그인 정보는 ID와 비밀번호다. 이메일 주소는 입력하지 않는다.
-- Supabase Auth 내부에서는 정규화된 ID를 `studyplanner+{id}@nomadho.com` 형식으로 변환해 인증한다. 사용자는 이메일 주소를 입력하지 않는다.
-- ID는 영문 소문자·숫자·점·하이픈·밑줄로 3~32자, 비밀번호는 8자 이상으로 제한한다.
-- ID/PW 가입이 작동하려면 Supabase의 `Authentication → Providers → Email → Confirm email`을 꺼야 한다. 이 내부 이메일 별칭은 사용자의 메일함이 아니므로 확인 메일을 받을 수 없다.
-- 이메일 복구를 사용하지 않으므로 비밀번호를 잊으면 셀프 재설정은 불가능하다. `admin / admin` 같은 공개 기본 비밀번호 대신 관리자도 개인 비밀번호를 사용한다.
+- 가입할 때 로그인 ID, 실제 복구 이메일 주소, 비밀번호를 등록한다. 로그인 화면에는 ID와 비밀번호만 입력한다.
+- 가입 이메일 확인을 켜 둔다. 사용자는 확인 메일의 링크를 눌러야 로그인할 수 있다.
+- `study_profiles` 테이블은 `auth.users`와 분리해 `user_id`와 고유 ID만 보관한다. 클라이언트에서 이메일을 조회할 수 없고, 서버의 로그인·복구 API만 Supabase Secret key로 매핑을 조회한다.
+- ID는 영문 소문자·숫자·점·하이픈·밑줄로 3~32자, 비밀번호는 8~256자로 제한한다.
+- 비밀번호를 잊으면 가입할 때 등록한 ID와 복구 이메일을 함께 제출한다. 두 정보가 일치할 때 Supabase가 재설정 메일을 발송하고, 이메일 링크에서 새 비밀번호를 정한다.
+- `admin`은 사용할 수 있는 ID일 뿐 관리자 권한이 아니다. 모든 계정은 각자 비밀번호를 정하며 공용 `admin/admin` 계정은 만들지 않는다.
+
+## 서비스 키 설정
+
+- Vercel의 `tool-hub` 프로젝트에 `SUPABASE_SECRET_KEY`를 Production, Preview, Development 환경 변수로 직접 등록한다. 키는 브라우저로 보내지 않으며 채팅에 붙여 넣지 않는다.
+- 값은 Supabase Dashboard → Project Settings → API Keys에서 만든 `Secret key`다. Supabase 키 목록이나 SQL에 넣지 않는다.
+- 기존 `SUPABASE_URL`, `SUPABASE_ANON_KEY`는 클라이언트 공개 설정이므로 그대로 사용한다. Secret key는 계정 ID 조회 서버 API에만 쓴다.
+- Supabase Authentication URL Configuration에서 Site URL을 `https://www.nomadho.com`으로 설정하고 Redirect URLs에 `https://www.nomadho.com/fire-study-planner/index.html`을 추가한다.
+- Supabase Authentication → Sign In / Providers에서 Email 가입을 허용하고 `Confirm email`을 켠다.
+- 신규 Vercel 환경 변수를 저장한 뒤 재배포해야 서버 로그인과 복구 기능이 적용된다.
+
+## 이메일과 문자 비용
+
+- Supabase 기본 메일 발송은 시간당 2통이며 프로젝트 팀 구성원의 이메일 주소에만 발송된다. 다른 주소로 가입 확인·복구 메일을 보내려면 SMTP 제공자를 연결한다.
+- SMS 인증은 Supabase가 무료로 문자를 보내주는 기능이 아니다. 별도의 SMS 제공자 계정과 발송료가 필요할 수 있어 현재는 복구 이메일을 사용한다.
 
 ## 계정별 데이터
 

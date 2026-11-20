@@ -135,3 +135,51 @@ do $$ begin
   alter publication supabase_realtime add table public.study_progress;
 exception when duplicate_object then null;
 end $$;
+
+-- Usernames are stored separately from Auth emails so the UI can accept ID/PW
+-- while Supabase Auth continues to use the verified recovery email internally.
+create table if not exists public.study_profiles (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  username text not null unique,
+  created_at timestamptz not null default now(),
+  constraint study_profiles_username_format check (
+    username = lower(username)
+    and username ~ '^[a-z0-9][a-z0-9._-]{2,31}$'
+  )
+);
+
+alter table public.study_profiles enable row level security;
+revoke all on public.study_profiles from public, anon, authenticated;
+grant select on public.study_profiles to authenticated;
+grant select on public.study_profiles to service_role;
+drop policy if exists "Users read own study profile" on public.study_profiles;
+create policy "Users read own study profile" on public.study_profiles
+  for select to authenticated using ((select auth.uid()) = user_id);
+
+create schema if not exists private;
+revoke all on schema private from public, anon, authenticated;
+
+create or replace function private.handle_new_study_profile()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  login_id text := lower(btrim(coalesce(new.raw_user_meta_data ->> 'username', '')));
+begin
+  if login_id !~ '^[a-z0-9][a-z0-9._-]{2,31}$' then
+    raise exception 'Invalid Study Planner username' using errcode = '23514';
+  end if;
+
+  insert into public.study_profiles (user_id, username)
+  values (new.id, login_id);
+  return new;
+end;
+$$;
+
+revoke all on function private.handle_new_study_profile() from public, anon, authenticated;
+drop trigger if exists on_auth_user_created_study_profile on auth.users;
+create trigger on_auth_user_created_study_profile
+  after insert on auth.users
+  for each row execute function private.handle_new_study_profile();

@@ -2,7 +2,6 @@ import { END_DATE, TIME_ZONE, TOTAL_LECTURES, subjects as starterSubjects, tasks
 
 const STORAGE_KEY = "fire-study-planner-progress-v1";
 const LOCAL_PLAN_KEY = "fire-study-planner-plan-v2";
-const LOGIN_EMAIL_DOMAIN = "nomadho.com";
 const weekdays = ["일", "월", "화", "수", "목", "금", "토"];
 const subjectColors = ["#e4f0ff", "#fde5e5", "#fff2c9", "#e6f3e8", "#efe7ff", "#ffe9d8"];
 const starterMinutes = [72, 47, 49];
@@ -16,6 +15,7 @@ let progress = {};
 let selectedDate = todayInKorea();
 let syncMessage = "이 기기에 저장 중";
 let realtimeChannel;
+let passwordRecoveryMode = typeof window !== "undefined" && window.location.hash.includes("type=recovery");
 
 function todayInKorea() {
   const parts = new Intl.DateTimeFormat("en-CA", { timeZone: TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
@@ -33,7 +33,6 @@ function normalizeLoginId(value) {
   }
   return loginId;
 }
-function authEmailForLoginId(loginId) { return `studyplanner+${loginId}@${LOGIN_EMAIL_DOMAIN}`; }
 function readLocal(key, fallback) { try { return JSON.parse(localStorage.getItem(key) || "null") ?? fallback; } catch { return fallback; } }
 function persistLocal() { localStorage.setItem(STORAGE_KEY, JSON.stringify(progress)); localStorage.setItem(LOCAL_PLAN_KEY, JSON.stringify({ plan, subjects, tasks })); }
 function displayLabel(task) {
@@ -77,25 +76,61 @@ function makeEvenSchedule(subjectRows, startDate, endDate, includeWeekends = fal
   }
   return rows;
 }
-function authView(message = "") {
+function authView(message = "", mode = "login") {
+  const recovery = mode === "recover";
+  const signup = mode === "signup";
+  const formFields = recovery
+    ? `<label class="field">ID<input name="loginId" required minlength="3" maxlength="32" autocapitalize="none" autocomplete="username" placeholder="가입할 때 만든 ID"></label><label class="field">복구 이메일<input name="email" type="email" required autocomplete="email" placeholder="가입할 때 등록한 이메일"></label>`
+    : `<label class="field">ID<input name="loginId" type="text" minlength="3" maxlength="32" pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,31}" autocapitalize="none" autocomplete="username" required placeholder="예: admin"></label>${signup ? '<label class="field">복구 이메일<input name="email" type="email" autocomplete="email" required placeholder="비밀번호 재설정에 사용할 이메일"></label>' : ""}<label class="field">비밀번호<input name="password" type="password" minlength="8" autocomplete="${signup ? "new-password" : "current-password"}" required placeholder="8자 이상 · admin/admin은 사용할 수 없어요"></label>`;
+  const title = recovery ? "비밀번호 찾기" : signup ? "새 계정 만들기" : "내 학습 공간";
+  const help = recovery ? "가입할 때 등록한 ID와 복구 이메일을 입력하면 재설정 안내를 보내드립니다." : signup ? "로그인 ID, 복구 이메일, 비밀번호를 등록해 주세요. 가입 후 이메일 인증을 마치면 로그인할 수 있어요." : "로그인 ID와 비밀번호를 입력하세요. 계정이 없으면 새 계정을 만들어 주세요.";
+  const submitLabel = recovery ? "재설정 이메일 받기" : signup ? "가입하고 인증 메일 받기" : "로그인";
   document.querySelector("#app").innerHTML = `<main class="page-shell"><header class="page-header"><div><p class="eyebrow">공부 기록을 여러 기기에서 이어가세요</p><h1>Study Planner</h1><p class="subtitle">계정으로 로그인하면 기록이 클라우드에 저장됩니다.</p></div><span class="timezone-badge">한국 시간 · KST</span></header>
-  <section class="card auth-card"><h2>내 학습 공간</h2><p class="subtitle">이메일 없이 ID와 비밀번호로 가입합니다. ID는 3~32자의 영문 소문자·숫자·점·하이픈·밑줄이며, 비밀번호는 8자 이상으로 만들어 주세요. 비밀번호를 잊으면 이메일로 재설정할 수 없으니 안전하게 보관해 주세요.</p><form id="auth-form"><label class="field">ID<input name="loginId" type="text" minlength="3" maxlength="32" pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,31}" autocapitalize="none" autocomplete="username" required placeholder="예: admin"></label><label class="field">비밀번호<input name="password" type="password" minlength="8" autocomplete="current-password" required placeholder="8자 이상 · admin/admin은 사용할 수 없어요"></label><div class="button-row"><button class="button button-primary" name="action" value="signup">새 계정 만들기</button><button class="button" name="action" value="login">로그인</button></div></form><p class="notice" role="status">${escapeHTML(message || (supabase ? "계정을 만들거나 기존 ID와 비밀번호로 로그인하세요." : "클라우드 연결 설정 전입니다. 현재는 이 기기에만 저장됩니다."))}</p></section></main>`;
+  <section class="card auth-card"><h2>${title}</h2><p class="subtitle">${help}</p><form id="auth-form">${formFields}<div class="button-row"><button class="button button-primary" type="submit">${submitLabel}</button></div></form><div class="button-row">${!signup && !recovery ? '<button class="button" id="show-signup" type="button">새 계정 만들기</button><button class="button" id="show-recovery" type="button">비밀번호 찾기</button>' : '<button class="button" id="show-login" type="button">로그인으로 돌아가기</button>'}</div><p class="notice" role="status">${escapeHTML(message || (supabase ? "계정을 만들거나 기존 ID와 비밀번호로 로그인하세요." : "클라우드 연결 설정 전입니다. 현재는 이 기기에만 저장됩니다."))}</p></section></main>`;
+  document.querySelector("#show-signup")?.addEventListener("click", () => authView("", "signup"));
+  document.querySelector("#show-recovery")?.addEventListener("click", () => authView("", "recover"));
+  document.querySelector("#show-login")?.addEventListener("click", () => authView("", "login"));
   document.querySelector("#auth-form").addEventListener("submit", async (event) => {
     event.preventDefault();
-    const action = event.submitter?.value || "login";
     const form = new FormData(event.currentTarget);
-    const password = String(form.get("password") ?? "");
+    if (!supabase) { authView("클라우드 설정이 아직 완료되지 않았습니다. 잠시 후 다시 이용해 주세요.", mode); return; }
+    if (recovery) {
+      let loginId;
+      try { loginId = normalizeLoginId(form.get("loginId")); } catch (error) { authView(error.message, mode); return; }
+      const response = await fetch("/api/study-planner-auth/recover", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: loginId, email: String(form.get("email") ?? "").trim() }) }).catch(() => null);
+      const result = await response?.json().catch(() => ({}));
+      authView(result?.message || result?.error || "복구 서버에 연결할 수 없습니다.", mode);
+      return;
+    }
     let loginId;
-    try { loginId = normalizeLoginId(form.get("loginId")); }
-    catch (error) { authView(error.message); return; }
-    if (!supabase) { authView("클라우드 설정이 아직 완료되지 않았습니다. 잠시 후 다시 이용해 주세요."); return; }
-    const email = authEmailForLoginId(loginId);
-    const result = action === "signup"
-      ? await supabase.auth.signUp({ email, password, options: { data: { username: loginId } } })
-      : await supabase.auth.signInWithPassword({ email, password });
-    if (result.error) { authView(result.error.message); return; }
-    if (action === "signup" && !result.data.session) authView("ID/PW 가입에는 Supabase의 이메일 인증이 꺼져 있어야 합니다. Supabase에서 Authentication → Providers → Email의 Confirm email을 끈 뒤 다시 가입해 주세요.");
-    else { user = result.data.user; await loadUserData(); render(); }
+    try { loginId = normalizeLoginId(form.get("loginId")); } catch (error) { authView(error.message, mode); return; }
+    const password = String(form.get("password") ?? "");
+    if (password.length < 8 || password.length > 256) { authView("비밀번호는 8~256자로 입력해 주세요.", mode); return; }
+    if (signup) {
+      const email = String(form.get("email") ?? "").trim();
+      const result = await supabase.auth.signUp({ email, password, options: { data: { username: loginId }, emailRedirectTo: "https://www.nomadho.com/fire-study-planner/index.html" } });
+      if (result.error) { authView(result.error.message, mode); return; }
+      if (!result.data.session) { authView("인증 메일을 보냈습니다. 메일의 확인 버튼을 누른 뒤 로그인해 주세요.", "login"); return; }
+      user = result.data.user; await loadUserData(); render(); return;
+    }
+    const response = await fetch("/api/study-planner-auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: loginId, password }) }).catch(() => null);
+    const result = await response?.json().catch(() => ({}));
+    if (!response?.ok) { authView(result?.error || "로그인 서버에 연결할 수 없습니다.", mode); return; }
+    const { error } = await supabase.auth.setSession({ access_token: result.access_token, refresh_token: result.refresh_token });
+    if (error) { authView(error.message, mode); return; }
+  });
+}
+function passwordResetView(message = "") {
+  document.querySelector("#app").innerHTML = `<main class="page-shell"><section class="card auth-card"><h2>새 비밀번호 설정</h2><p class="subtitle">복구 이메일의 링크를 확인하고 새 비밀번호를 입력해 주세요.</p><form id="reset-form"><label class="field">새 비밀번호<input name="password" type="password" minlength="8" autocomplete="new-password" required placeholder="8자 이상"></label><div class="button-row"><button class="button button-primary" type="submit">비밀번호 변경</button></div></form><p class="notice" role="status">${escapeHTML(message)}</p></section></main>`;
+  document.querySelector("#reset-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const password = String(new FormData(event.currentTarget).get("password") ?? "");
+    const { error } = await supabase.auth.updateUser({ password });
+    if (error) { passwordResetView(error.message); return; }
+    passwordRecoveryMode = false;
+    await supabase.auth.signOut();
+    history.replaceState(null, "", window.location.pathname);
+    authView("비밀번호를 변경했습니다. 새 비밀번호로 로그인해 주세요.");
   });
 }
 function onboardingView(message = "") {
@@ -234,6 +269,7 @@ function monthMarkup(year, month) {
   return `<div class="month"><h3>${year}년 ${month + 1}월</h3><div class="calendar-grid">${weekdays.map((day) => `<span class="weekday">${day}</span>`).join("")}${cells.join("")}</div></div>`;
 }
 function render() {
+  if (passwordRecoveryMode) { passwordResetView(); return; }
   if (!user) { authView(); return; }
   if (!plan) { onboardingView(); return; }
   const start = dateFromISO(plan.start_date); const end = dateFromISO(plan.target_date);

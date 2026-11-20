@@ -25,7 +25,8 @@ npm run dev
 
 - GitHub 레포 연결 후 Vercel에서 Import — Focus Disc와 동일한 방식
 - 매일 아침 커밋 → Vercel이 자동으로 프로덕션 반영
-- Study Planner의 계정 저장을 켤 때는 Supabase 프로젝트의 SQL을 적용하고 Vercel 환경 변수 `SUPABASE_URL`, `SUPABASE_ANON_KEY`를 설정
+- Study Planner 계정 기능에는 Supabase SQL과 Vercel 환경 변수 `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SECRET_KEY`가 필요하다. Secret key는 서버에서만 사용하며 브라우저에 노출하지 않는다.
+- 회원가입 이메일 확인과 비밀번호 복구에는 Supabase Auth URL 설정 및 이메일 발송 서비스가 필요하다. 자세한 설정은 `docs/apps/fire-study-planner/04-account-and-plan-setup.md` 참고
 
 ## 폴더 구조
 

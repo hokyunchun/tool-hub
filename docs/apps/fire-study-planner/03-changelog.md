@@ -35,5 +35,12 @@
 - `study_plans.include_weekends`를 추가해 주말 선택을 저장한다. 기존 행은 `false`로 처리한다.
 - 완료 기록은 로그인한 Supabase 계정의 `user_id`로 저장되며, RLS로 다른 계정의 자료에 접근하지 못하게 한다.
 - 현재 인증 ID는 이메일 주소다. 사용자명만 쓰는 로그인은 계정 복구와 사용자명 연결 방식을 정한 뒤 별도 구현한다.
-- 가입·로그인 화면을 이메일 없는 ID/PW 방식으로 변경했다. ID를 Supabase Auth 내부의 `studyplanner+{id}@nomadho.com` 이메일 별칭으로 연결하므로, Supabase Email provider의 Confirm email을 꺼야 한다.
-- `admin` ID는 허용하되, 공용 비밀번호 `admin`은 사용하지 않는다. 이메일 복구를 쓰지 않는 계정은 비밀번호를 잊으면 셀프 복구가 안 된다.
+- 초기 ID/PW 별칭 로그인 방식은 복구 이메일을 지원하지 않아 교체했다.
+
+## 2026-11-20 — 복구 이메일과 ID 로그인
+
+- 가입 화면에서 고유 ID, 실제 복구 이메일, 비밀번호를 받도록 변경했다. 가입 확인과 비밀번호 재설정은 이메일로 진행한다.
+- 로그인 화면에는 ID와 비밀번호만 받는다. 서버에서 비공개 ID 매핑을 확인한 뒤 Supabase Auth로 인증한다.
+- `study_profiles`의 ID 매핑은 RLS로 보호하고, Secret key는 서버 API에서만 사용하도록 구성했다.
+- `admin`은 ID로 선택할 수 있지만 공용 `admin/admin` 계정은 허용하지 않는다.
+- SMS OTP는 유료 SMS 제공자 설정이 필요하므로 우선 복구 이메일을 사용한다.

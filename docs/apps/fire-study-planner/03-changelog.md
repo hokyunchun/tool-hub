@@ -24,7 +24,7 @@
 - 초기 강의 계획 자료에는 재생시간이 없었지만, 사용자가 추가로 제공한 수강 기록에서 과목별 평균을 계산해 72분(행정법총론 86개), 47분(소방관계법규 103개), 49분(소방학개론 106개)으로 설정했다. 시간 누락 2개는 평균에서 제외했다. 새 계획에서는 사용자가 과목별 분당 시간을 입력할 수 있다.
 - 사용자가 만든 Supabase Toolhub 프로젝트에 네 테이블, RLS 정책, 로그인 사용자 권한을 적용했다. 보안 Advisor 결과에는 이슈가 없었다.
 - Supabase URL과 publishable key를 Vercel의 프로덕션·프리뷰·개발 환경에 등록했다.
-- 가입 확인 메일의 이동 주소를 위해 Supabase Authentication의 Site URL에 https://www.nomadho.com 설정이 필요하다.
+- 당시 이메일 가입 흐름에서는 확인 메일 이동 주소에 Supabase Authentication Site URL 설정이 필요했다. 현재 ID/PW 흐름에서는 확인 메일을 사용하지 않는다.
 
 ## 2026-11-19 — 다크 UI와 계정별 계획 설정
 
@@ -35,3 +35,5 @@
 - `study_plans.include_weekends`를 추가해 주말 선택을 저장한다. 기존 행은 `false`로 처리한다.
 - 완료 기록은 로그인한 Supabase 계정의 `user_id`로 저장되며, RLS로 다른 계정의 자료에 접근하지 못하게 한다.
 - 현재 인증 ID는 이메일 주소다. 사용자명만 쓰는 로그인은 계정 복구와 사용자명 연결 방식을 정한 뒤 별도 구현한다.
+- 가입·로그인 화면을 이메일 없는 ID/PW 방식으로 변경했다. ID를 Supabase Auth 내부의 `studyplanner+{id}@nomadho.com` 이메일 별칭으로 연결하므로, Supabase Email provider의 Confirm email을 꺼야 한다.
+- `admin` ID는 허용하되, 공용 비밀번호 `admin`은 사용하지 않는다. 이메일 복구를 쓰지 않는 계정은 비밀번호를 잊으면 셀프 복구가 안 된다.

@@ -2,6 +2,7 @@ import { END_DATE, TIME_ZONE, TOTAL_LECTURES, subjects as starterSubjects, tasks
 
 const STORAGE_KEY = "fire-study-planner-progress-v1";
 const LOCAL_PLAN_KEY = "fire-study-planner-plan-v2";
+const LOGIN_EMAIL_DOMAIN = "nomadho.com";
 const weekdays = ["일", "월", "화", "수", "목", "금", "토"];
 const subjectColors = ["#e4f0ff", "#fde5e5", "#fff2c9", "#e6f3e8", "#efe7ff", "#ffe9d8"];
 const starterMinutes = [72, 47, 49];
@@ -25,6 +26,14 @@ function dateFromISO(date) { const [y, m, d] = date.split("-").map(Number); retu
 function formatDate(date, options = { year: "numeric", month: "long", day: "numeric", weekday: "long" }) { return new Intl.DateTimeFormat("ko-KR", { ...options, timeZone: "UTC" }).format(dateFromISO(date)); }
 function daysBetween(from, to) { return Math.round((dateFromISO(to) - dateFromISO(from)) / 86400000); }
 function escapeHTML(value) { return String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]); }
+function normalizeLoginId(value) {
+  const loginId = String(value ?? "").trim().toLowerCase();
+  if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(loginId)) {
+    throw new Error("ID는 영문 소문자와 숫자로 시작하고, 영문·숫자·점·하이픈·밑줄을 사용해 3~32자로 입력해 주세요.");
+  }
+  return loginId;
+}
+function authEmailForLoginId(loginId) { return `studyplanner+${loginId}@${LOGIN_EMAIL_DOMAIN}`; }
 function readLocal(key, fallback) { try { return JSON.parse(localStorage.getItem(key) || "null") ?? fallback; } catch { return fallback; } }
 function persistLocal() { localStorage.setItem(STORAGE_KEY, JSON.stringify(progress)); localStorage.setItem(LOCAL_PLAN_KEY, JSON.stringify({ plan, subjects, tasks })); }
 function displayLabel(task) {
@@ -70,16 +79,22 @@ function makeEvenSchedule(subjectRows, startDate, endDate, includeWeekends = fal
 }
 function authView(message = "") {
   document.querySelector("#app").innerHTML = `<main class="page-shell"><header class="page-header"><div><p class="eyebrow">공부 기록을 여러 기기에서 이어가세요</p><h1>Study Planner</h1><p class="subtitle">계정으로 로그인하면 기록이 클라우드에 저장됩니다.</p></div><span class="timezone-badge">한국 시간 · KST</span></header>
-  <section class="card auth-card"><h2>내 학습 공간</h2><p class="subtitle">처음이라면 새 계정을 만드세요. 현재 로그인 ID는 이메일 주소입니다. admin/admin처럼 공개된 비밀번호 대신 본인만 아는 비밀번호를 설정해 주세요.</p><form id="auth-form"><label class="field">ID (이메일 주소)<input name="email" type="email" autocomplete="username" required placeholder="가입에 사용할 이메일"></label><label class="field">비밀번호<input name="password" type="password" minlength="8" autocomplete="current-password" required placeholder="8자 이상"></label><div class="button-row"><button class="button button-primary" name="action" value="signup">새 계정 만들기</button><button class="button" name="action" value="login">로그인</button></div></form><p class="notice" role="status">${escapeHTML(message || (supabase ? "새 계정 만들기 → 이메일 확인 → 이 화면에서 로그인 순서로 진행하세요." : "클라우드 연결 설정 전입니다. 현재는 이 기기에만 저장됩니다."))}</p></section></main>`;
+  <section class="card auth-card"><h2>내 학습 공간</h2><p class="subtitle">이메일 없이 ID와 비밀번호로 가입합니다. ID는 3~32자의 영문 소문자·숫자·점·하이픈·밑줄이며, 비밀번호는 8자 이상으로 만들어 주세요. 비밀번호를 잊으면 이메일로 재설정할 수 없으니 안전하게 보관해 주세요.</p><form id="auth-form"><label class="field">ID<input name="loginId" type="text" minlength="3" maxlength="32" pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,31}" autocapitalize="none" autocomplete="username" required placeholder="예: admin"></label><label class="field">비밀번호<input name="password" type="password" minlength="8" autocomplete="current-password" required placeholder="8자 이상 · admin/admin은 사용할 수 없어요"></label><div class="button-row"><button class="button button-primary" name="action" value="signup">새 계정 만들기</button><button class="button" name="action" value="login">로그인</button></div></form><p class="notice" role="status">${escapeHTML(message || (supabase ? "계정을 만들거나 기존 ID와 비밀번호로 로그인하세요." : "클라우드 연결 설정 전입니다. 현재는 이 기기에만 저장됩니다."))}</p></section></main>`;
   document.querySelector("#auth-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const action = event.submitter?.value || "login";
-    const email = new FormData(event.currentTarget).get("email");
-    const password = new FormData(event.currentTarget).get("password");
+    const form = new FormData(event.currentTarget);
+    const password = String(form.get("password") ?? "");
+    let loginId;
+    try { loginId = normalizeLoginId(form.get("loginId")); }
+    catch (error) { authView(error.message); return; }
     if (!supabase) { authView("클라우드 설정이 아직 완료되지 않았습니다. 잠시 후 다시 이용해 주세요."); return; }
-    const result = action === "signup" ? await supabase.auth.signUp({ email, password }) : await supabase.auth.signInWithPassword({ email, password });
+    const email = authEmailForLoginId(loginId);
+    const result = action === "signup"
+      ? await supabase.auth.signUp({ email, password, options: { data: { username: loginId } } })
+      : await supabase.auth.signInWithPassword({ email, password });
     if (result.error) { authView(result.error.message); return; }
-    if (action === "signup" && !result.data.session) authView("가입 확인 이메일을 보냈습니다. 이메일 확인을 마친 뒤 로그인해 주세요.");
+    if (action === "signup" && !result.data.session) authView("ID/PW 가입에는 Supabase의 이메일 인증이 꺼져 있어야 합니다. Supabase에서 Authentication → Providers → Email의 Confirm email을 끈 뒤 다시 가입해 주세요.");
     else { user = result.data.user; await loadUserData(); render(); }
   });
 }

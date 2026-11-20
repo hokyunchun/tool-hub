@@ -25,8 +25,8 @@ export const tools: Tool[] = [
   },
   {
     slug: "worklog",
-    name: "일당기록",
-    description: "인력사무소별 일당을 토글로 기록하고 이번달 현황을 대시보드로 확인.",
+    name: "Daily Pay",
+    description: "일한 장소와 받은 금액을 빠르게 기록하고 이번 달 수입을 확인.",
     category: "재무",
     status: "live",
   },

@@ -49,8 +49,40 @@ function completedOnDate(task, date) {
   if (!value) return false;
   return typeof value === "string" ? value.slice(0, 10) === date : task.study_date === date;
 }
+function catchupDates(from = todayInKorea()) {
+  if (plan?.include_weekends) return [];
+  const weekday = dateFromISO(from).getUTCDay();
+  if (weekday === 0) return [from];
+  const daysUntilSaturday = (6 - weekday + 7) % 7;
+  const saturday = dateFromISO(from);
+  saturday.setUTCDate(saturday.getUTCDate() + daysUntilSaturday);
+  const saturdayISO = saturday.toISOString().slice(0, 10);
+  return [saturdayISO, new Date(saturday.getTime() + 86400000).toISOString().slice(0, 10)];
+}
+function catchupTasksOn(date) {
+  const weekday = dateFromISO(date).getUTCDay();
+  const isWeekend = weekday === 0 || weekday === 6;
+  const completedLate = isWeekend ? tasks.filter((task) => task.type === "lecture" && task.study_date < date && completedOnDate(task, date)) : [];
+  if (plan?.include_weekends || !isWeekend || date < todayInKorea()) return completedLate;
+  const dates = catchupDates();
+  const slot = dates.indexOf(date);
+  if (slot < 0) return completedLate;
+  const active = currentSubject();
+  if (!active) return completedLate;
+  const backlog = tasks.filter((task) => task.subject_id === active.id && task.type === "lecture" && task.study_date <= todayInKorea() && (!progress[task.id] || dates.some((catchupDate) => completedOnDate(task, catchupDate))))
+    .sort((a, b) => a.study_date.localeCompare(b.study_date) || Number(a.lecture_number) - Number(b.lecture_number));
+  const splitAt = Math.ceil(backlog.length / dates.length);
+  const assigned = slot === 0
+    ? backlog.slice(0, splitAt)
+    : backlog.slice(splitAt).concat(backlog.slice(0, splitAt).filter((task) => !progress[task.id]));
+  return [...new Map([...completedLate, ...assigned].map((task) => [task.id, task])).values()];
+}
 function visibleTasksOn(date) {
   const completedToday = tasks.filter((task) => completedOnDate(task, date));
+  const catchup = catchupTasksOn(date);
+  if (catchup.some((task) => !progress[task.id]) && date >= todayInKorea()) {
+    return [...new Map([...completedToday, ...catchup.filter((task) => !progress[task.id])].map((task) => [task.id, task])).values()];
+  }
   const active = currentSubject();
   if (!active) return completedToday;
   let pending = tasks.filter((task) => task.subject_id === active.id && task.study_date <= date && !progress[task.id]);
@@ -117,7 +149,7 @@ function authView(message = "", mode = "login") {
   const help = recovery ? "가입할 때 등록한 ID와 복구 이메일을 입력하면 재설정 안내를 보내드립니다." : signup ? "로그인 ID, 복구 이메일, 비밀번호를 등록해 주세요. 가입 후 이메일 인증을 마치면 로그인할 수 있어요." : "로그인 ID와 비밀번호를 입력하세요. 계정이 없으면 새 계정을 만들어 주세요.";
   const submitLabel = recovery ? "재설정 이메일 받기" : signup ? "가입하고 인증 메일 받기" : "로그인";
   document.querySelector("#app").innerHTML = `<main class="page-shell"><header class="page-header"><div><p class="eyebrow">공부 기록을 여러 기기에서 이어가세요</p><h1>Study Planner</h1><p class="subtitle">계정으로 로그인하면 기록이 클라우드에 저장됩니다.</p></div><span class="timezone-badge">한국 시간 · KST</span></header>
-  <section class="card auth-card"><h2>${title}</h2><p class="subtitle">${help}</p><form id="auth-form">${formFields}<div class="button-row"><button class="button button-primary" type="submit">${submitLabel}</button></div></form><div class="button-row">${!signup && !recovery ? '<button class="button" id="show-signup" type="button">새 계정 만들기</button><button class="button" id="show-recovery" type="button">비밀번호 찾기</button>' : '<button class="button" id="show-login" type="button">로그인으로 돌아가기</button>'}</div><p class="notice" role="status">${escapeHTML(message || (supabase ? "계정을 만들거나 기존 ID와 비밀번호로 로그인하세요." : "클라우드 연결 설정 전입니다. 현재는 이 기기에만 저장됩니다."))}</p></section></main>`;
+  <section class="card auth-card"><h2>${title}</h2><p class="subtitle">${help}</p><form id="auth-form">${formFields}<div class="button-row"><button class="button button-primary" id="auth-submit" type="submit">${submitLabel}</button></div></form><div class="button-row">${!signup && !recovery ? '<button class="button" id="show-signup" type="button">새 계정 만들기</button><button class="button" id="show-recovery" type="button">비밀번호 찾기</button>' : '<button class="button" id="show-login" type="button">로그인으로 돌아가기</button>'}</div><p class="notice" role="status">${escapeHTML(message || (supabase ? "계정을 만들거나 기존 ID와 비밀번호로 로그인하세요." : "클라우드 연결 설정 전입니다. 현재는 이 기기에만 저장됩니다."))}</p></section></main>`;
   document.querySelector("#show-signup")?.addEventListener("click", () => authView("", "signup"));
   document.querySelector("#show-recovery")?.addEventListener("click", () => authView("", "recover"));
   document.querySelector("#show-login")?.addEventListener("click", () => authView("", "login"));
@@ -137,6 +169,9 @@ function authView(message = "", mode = "login") {
     try { loginId = normalizeLoginId(form.get("loginId")); } catch (error) { authView(error.message, mode); return; }
     const password = String(form.get("password") ?? "");
     if (password.length < 8 || password.length > 256) { authView("비밀번호는 8~256자로 입력해 주세요.", mode); return; }
+    const submitButton = document.querySelector("#auth-submit");
+    submitButton.disabled = true;
+    submitButton.textContent = signup ? "계정 만드는 중…" : "로그인 중…";
     if (signup) {
       const email = String(form.get("email") ?? "").trim();
       const result = await supabase.auth.signUp({ email, password, options: { data: { username: loginId }, emailRedirectTo: "https://www.nomadho.com/fire-study-planner/index.html" } });
@@ -144,11 +179,24 @@ function authView(message = "", mode = "login") {
       if (!result.data.session) { authView("인증 메일을 보냈습니다. 메일의 확인 버튼을 누른 뒤 로그인해 주세요.", "login"); return; }
       user = result.data.user; await loadUserData(); render(); return;
     }
-    const response = await fetch("/api/study-planner-auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: loginId, password }) }).catch(() => null);
-    const result = await response?.json().catch(() => ({}));
+    let response;
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 20000);
+      try { response = await fetch("/api/study-planner-auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: loginId, password }), signal: controller.signal }); }
+      finally { clearTimeout(timeout); }
+    } catch {
+      authView("로그인 서버와 연결하지 못했습니다. 연결 상태를 확인하고 다시 시도해 주세요.", mode);
+      return;
+    }
+    const result = await response.json().catch(() => ({}));
     if (!response?.ok) { authView(result?.error || "로그인 서버에 연결할 수 없습니다.", mode); return; }
-    const { error } = await supabase.auth.setSession({ access_token: result.access_token, refresh_token: result.refresh_token });
-    if (error) { authView(error.message, mode); return; }
+    try {
+      const { error } = await supabase.auth.setSession({ access_token: result.access_token, refresh_token: result.refresh_token });
+      if (error) { authView(error.message, mode); return; }
+    } catch {
+      authView("로그인은 확인됐지만 세션을 저장하지 못했습니다. 페이지를 새로고침한 뒤 다시 시도해 주세요.", mode);
+    }
   });
 }
 function passwordResetView(message = "") {
@@ -296,6 +344,7 @@ async function signOut() {
 
 function renderTasks() {
   const dayTasks = visibleTasksOn(selectedDate);
+  const catchupIds = new Set(catchupTasksOn(selectedDate).map((task) => task.id));
   const completed = dayTasks.filter((task) => progress[task.id]).length;
   const percent = dayTasks.length ? Math.round(completed / dayTasks.length * 100) : 0;
   const names = [...new Set(dayTasks.map((task) => subjects.find((s) => s.id === task.subject_id)?.name).filter(Boolean))];
@@ -305,8 +354,9 @@ function renderTasks() {
   const hours = Math.floor(studyMinutes / 60); const minutes = studyMinutes % 60;
   const timeLabel = hours ? `${hours}시간${minutes ? ` ${minutes}분` : ""}` : `${minutes}분`;
   const activeSubject = currentSubject();
-  const stageStatus = activeSubject ? `현재 과목: ${activeSubject.name} · ${subjectDoneCount(activeSubject)}/${activeSubject.lecture_count}강 완료 · 전부 완료하면 다음 과목이 열립니다.` : "모든 과목을 완료했습니다. 수고하셨어요.";
-  return `<section class="card today-card"><div class="section-heading"><div><p class="eyebrow">${selectedDate === todayInKorea() ? "오늘의 공부" : "선택한 날짜의 공부"}</p><h2>${formatDate(selectedDate)}</h2></div><span class="subject-pill">${escapeHTML(names.join(" · ") || "휴식일")}</span></div><p class="stage-note">${escapeHTML(stageStatus)}</p>${dayTasks.length ? `<div class="study-time"><span>예상 강의 시간</span><strong>약 ${timeLabel}</strong><small>${lectureTasks.length}개 항목 · OX 복습 시간 제외${estimatedLectureCount ? ` · ${estimatedLectureCount}개 시간 추정` : ""}</small></div>` : ""}<div class="progress-label"><span>달성률</span><strong>${percent}%</strong></div>${progressBar(percent, "선택 날짜 달성률")}${dayTasks.length ? `<div class="task-list">${dayTasks.map((task) => `<label class="task ${progress[task.id] ? "is-done" : ""}"><input type="checkbox" data-task="${task.id}" ${progress[task.id] ? "checked" : ""}><span class="task-name">${escapeHTML(displayLabel(task))}${task.type === "lecture" && task.duration_minutes ? `<small>약 ${task.duration_minutes}분${task.duration_estimated ? " · 추정" : ""}</small>` : ""}</span></label>`).join("")}</div>` : '<div class="rest-note">이 날짜에는 현재 과목에서 할 일이 없어요. 휴식하거나 밀린 진도를 정리해도 좋습니다.</div>'}<div class="button-row"><button class="button button-primary" id="complete-day" ${dayTasks.length ? "" : "disabled"}>모두 완료</button><button class="button" id="reset-day" ${dayTasks.length ? "" : "disabled"}>초기화</button></div></section>`;
+  const hasCatchup = [...catchupIds].some((id) => !progress[id]) || catchupDates().some((date) => catchupTasksOn(date).some((task) => !progress[task.id]));
+  const stageStatus = hasCatchup ? "밀린 강의를 이번 주말 보충 일정에 배정했습니다. 캘린더의 초록색 날짜를 선택해 확인하세요." : activeSubject ? `현재 과목: ${activeSubject.name} · ${subjectDoneCount(activeSubject)}/${activeSubject.lecture_count}강 완료 · 전부 완료하면 다음 과목이 열립니다.` : "모든 과목을 완료했습니다. 수고하셨어요.";
+  return `<section class="card today-card"><div class="section-heading"><div><p class="eyebrow">${selectedDate === todayInKorea() ? "오늘의 공부" : "선택한 날짜의 공부"}</p><h2>${formatDate(selectedDate)}</h2></div><span class="subject-pill">${escapeHTML(names.join(" · ") || "휴식일")}</span></div><p class="stage-note">${escapeHTML(stageStatus)}</p>${dayTasks.length ? `<div class="study-time"><span>예상 강의 시간</span><strong>약 ${timeLabel}</strong><small>${lectureTasks.length}개 항목 · OX 복습 시간 제외${estimatedLectureCount ? ` · ${estimatedLectureCount}개 시간 추정` : ""}</small></div>` : ""}<div class="progress-label"><span>달성률</span><strong>${percent}%</strong></div>${progressBar(percent, "선택 날짜 달성률")}${dayTasks.length ? `<div class="task-list">${dayTasks.map((task) => `<label class="task ${progress[task.id] ? "is-done" : ""} ${catchupIds.has(task.id) ? "is-catchup" : ""}"><input type="checkbox" data-task="${task.id}" ${progress[task.id] ? "checked" : ""}><span class="task-name">${escapeHTML(displayLabel(task))}${catchupIds.has(task.id) ? `<small class="catchup-tag">주말 보충</small>` : ""}${task.type === "lecture" && task.duration_minutes ? `<small>약 ${task.duration_minutes}분${task.duration_estimated ? " · 추정" : ""}</small>` : ""}</span></label>`).join("")}</div>` : '<div class="rest-note">이 날짜에는 현재 과목에서 할 일이 없어요. 휴식하거나 밀린 진도를 정리해도 좋습니다.</div>'}<div class="button-row"><button class="button button-primary" id="complete-day" ${dayTasks.length ? "" : "disabled"}>모두 완료</button><button class="button" id="reset-day" ${dayTasks.length ? "" : "disabled"}>초기화</button></div></section>`;
 }
 function renderOverview() {
   const total = subjects.reduce((n, s) => n + Number(s.lecture_count), 0);
@@ -322,14 +372,18 @@ function monthMarkup(year, month) {
   const first = new Date(Date.UTC(year, month, 1, 12)); const count = new Date(Date.UTC(year, month + 1, 0, 12)).getUTCDate();
   const cells = Array.from({ length: first.getUTCDay() }, () => '<span class="calendar-empty"></span>');
   for (let day = 1; day <= count; day++) {
-    const date = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`; const dayTasks = plannedTasksOn(date);
+    const date = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const planned = plannedTasksOn(date);
+    const catchup = catchupTasksOn(date);
+    const dayTasks = [...new Map([...planned, ...catchup].map((task) => [task.id, task])).values()];
+    const isCatchup = catchup.length > 0;
     const done = dayTasks.length && dayTasks.every((task) => progress[task.id]);
     const daySubjects = [...new Set(dayTasks.map((task) => task.subject_id))].map((id) => subjects.find((subject) => subject.id === id)).filter(Boolean);
     const colors = daySubjects.map((subject) => subject.color || subjectColors[0]);
-    const dayColor = colors.length > 1 ? `linear-gradient(135deg, ${colors.map((color, i) => `${color} ${i * 100 / colors.length}% ${(i + 1) * 100 / colors.length}%`).join(", ")})` : colors[0];
-    const classes = ["calendar-day", dayTasks.length ? "has-plan" : "", done ? "is-done" : "", date === selectedDate ? "is-selected" : "", date === todayInKorea() ? "is-today" : ""].filter(Boolean).join(" ");
+    const dayColor = isCatchup ? "#28543a" : colors.length > 1 ? `linear-gradient(135deg, ${colors.map((color, i) => `${color} ${i * 100 / colors.length}% ${(i + 1) * 100 / colors.length}%`).join(", ")})` : colors[0];
+    const classes = ["calendar-day", dayTasks.length ? "has-plan" : "", isCatchup ? "is-catchup" : "", done ? "is-done" : "", date === selectedDate ? "is-selected" : "", date === todayInKorea() ? "is-today" : ""].filter(Boolean).join(" ");
     const subjectNames = daySubjects.map((subject) => subject.name).join(", ");
-    cells.push(`<button class="${classes}" style="${dayColor ? `--day-color:${dayColor}` : ""}" data-date="${date}" aria-label="${formatDate(date, { month: "long", day: "numeric" })}${subjectNames ? `, ${escapeHTML(subjectNames)} 학습` : ", 휴식일"}"><span>${day}</span>${dayTasks.length ? '<i aria-hidden="true"></i>' : ""}</button>`);
+    cells.push(`<button class="${classes}" style="${dayColor ? `--day-color:${dayColor}` : ""}" data-date="${date}" aria-label="${formatDate(date, { month: "long", day: "numeric" })}${isCatchup ? ", 밀린 강의 보충" : subjectNames ? `, ${escapeHTML(subjectNames)} 학습` : ", 휴식일"}"><span>${day}</span>${dayTasks.length ? '<i aria-hidden="true"></i>' : ""}</button>`);
   }
   return `<div class="month"><h3>${year}년 ${month + 1}월</h3><div class="calendar-grid">${weekdays.map((day) => `<span class="weekday">${day}</span>`).join("")}${cells.join("")}</div></div>`;
 }
@@ -337,11 +391,13 @@ function render() {
   if (passwordRecoveryMode) { passwordResetView(); return; }
   if (!user) { authView(); return; }
   if (!plan) { onboardingView(); return; }
-  const start = dateFromISO(plan.start_date); const end = dateFromISO(plan.target_date);
+  const start = dateFromISO(plan.start_date);
+  const nextCatchupEnd = catchupDates().filter((date) => catchupTasksOn(date).some((task) => !progress[task.id])).sort().at(-1);
+  const end = dateFromISO(nextCatchupEnd && nextCatchupEnd > plan.target_date ? nextCatchupEnd : plan.target_date);
   const months = [];
   for (let d = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1, 12)); d <= end; d.setUTCMonth(d.getUTCMonth() + 1)) months.push(monthMarkup(d.getUTCFullYear(), d.getUTCMonth()));
-  const legend = subjects.map((subject) => `<span><i style="background:${escapeHTML(subject.color || "#ddd")}"></i>${escapeHTML(subject.name)}</span>`).join("");
-  document.querySelector("#app").innerHTML = `<main class="page-shell"><header class="page-header"><div><p class="eyebrow">나의 학습 공간 · ${escapeHTML(plan.title)}</p><h1>Study Planner</h1><p class="subtitle">${subjects.reduce((n,s)=>n+Number(s.lecture_count),0)}강 · 완강 목표 ${formatDate(plan.target_date,{year:"numeric",month:"long",day:"numeric"})} · ${plan.include_weekends ? "주말 포함" : "평일만 공부"}</p></div><div class="account-tools"><span class="timezone-badge">한국 시간 · KST</span><span class="sync-state">${escapeHTML(syncMessage)}</span><button class="button" id="sign-out">로그아웃</button></div></header><div class="dashboard">${renderTasks()}${renderOverview()}<section class="card calendar-card"><div class="section-heading"><div><p class="eyebrow">학습 일정</p><h2>캘린더</h2></div><span class="calendar-key">${legend}</span></div><div class="months">${months.join("")}</div><p class="calendar-help">날짜를 누르면 해당 날짜의 계획을 볼 수 있어요. 날짜 기준은 한국 시간입니다. ${plan.include_weekends ? "주말도 일정에 포함했습니다." : "평일만 공부하도록 설정했습니다."}</p></section></div><footer>${supabase ? "학습 기록은 계정에 안전하게 저장되며, 로그인하면 다른 기기에서도 이어집니다." : "클라우드 연결 전이어서 현재 기록은 이 브라우저에 저장됩니다."} 강의 시간은 입력한 과목별 평균으로 추산하며, OX 복습 시간은 제외합니다.</footer></main>`;
+  const legend = `${subjects.map((subject) => `<span><i style="background:${escapeHTML(subject.color || "#ddd")}"></i>${escapeHTML(subject.name)}</span>`).join("")}<span><i class="catchup-legend"></i>주말 보충</span>`;
+  document.querySelector("#app").innerHTML = `<main class="page-shell"><header class="page-header"><div><p class="eyebrow">나의 학습 공간 · ${escapeHTML(plan.title)}</p><h1>Study Planner</h1><p class="subtitle">${subjects.reduce((n,s)=>n+Number(s.lecture_count),0)}강 · 완강 목표 ${formatDate(plan.target_date,{year:"numeric",month:"long",day:"numeric"})} · ${plan.include_weekends ? "주말 포함" : "평일만 공부"}</p></div><div class="account-tools"><span class="timezone-badge">한국 시간 · KST</span><span class="sync-state">${escapeHTML(syncMessage)}</span><button class="button" id="sign-out">로그아웃</button></div></header><div class="dashboard">${renderTasks()}${renderOverview()}<section class="card calendar-card"><div class="section-heading"><div><p class="eyebrow">학습 일정</p><h2>캘린더</h2></div><span class="calendar-key">${legend}</span></div><div class="months">${months.join("")}</div><p class="calendar-help">날짜를 누르면 해당 날짜의 계획을 볼 수 있어요. 초록색은 놓친 강의를 보충할 날짜입니다. 날짜 기준은 한국 시간입니다. ${plan.include_weekends ? "주말도 일정에 포함했습니다." : "미완료 강의는 다음 주말 보충 일정으로 배정됩니다."}</p></section></div><footer>${supabase ? "학습 기록은 계정에 안전하게 저장되며, 로그인하면 다른 기기에서도 이어집니다." : "클라우드 연결 전이어서 현재 기록은 이 브라우저에 저장됩니다."} 강의 시간은 입력한 과목별 평균으로 추산하며, OX 복습 시간은 제외합니다.</footer></main>`;
   document.querySelector("#sign-out").addEventListener("click", signOut);
   document.querySelectorAll("[data-task]").forEach((input) => input.addEventListener("change", (event) => setTask(event.currentTarget.dataset.task, event.currentTarget.checked)));
   document.querySelector("#complete-day").addEventListener("click", async () => { await setTasks(visibleTasksOn(selectedDate).map((task) => task.id), true); });
@@ -362,10 +418,17 @@ async function start() {
       user = session.user;
       try { await loadUserData(); } catch (error) { authView(error.message); return; }
     }
-    supabase.auth.onAuthStateChange(async (_event, session) => {
+    supabase.auth.onAuthStateChange((event, session) => {
       user = session?.user || null;
-      if (user) { try { await loadUserData(); } catch (error) { authView(error.message); return; } }
-      else { plan = null; render(); }
+      if (event === "SIGNED_OUT") { plan = null; subjects = []; tasks = []; progress = {}; render(); return; }
+      if (user && (event === "SIGNED_IN" || event === "INITIAL_SESSION")) {
+        const userId = user.id;
+        setTimeout(async () => {
+          if (user?.id !== userId) return;
+          try { await loadUserData(); render(); }
+          catch (error) { authView(error.message); }
+        }, 0);
+      }
     });
   } else {
     const local = readLocal(LOCAL_PLAN_KEY, null);

@@ -121,7 +121,7 @@ export default function WorkLog() {
 
       {/* 입력 영역 */}
       <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 p-5 mb-8">
-        <div className="text-sm font-medium mb-3">인력사무소</div>
+        <div className="text-sm font-medium mb-3">일한 곳</div>
         <div className="flex flex-wrap gap-2 mb-4">
           {AGENCIES.map((a) => (
             <button
@@ -154,12 +154,12 @@ export default function WorkLog() {
           <input
             value={customAgency}
             onChange={(e) => setCustomAgency(e.target.value)}
-            placeholder="사무소 이름"
+            placeholder="근무 장소"
             className="w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-transparent p-2 text-sm mb-4"
           />
         )}
 
-        <div className="text-sm font-medium mb-3">일당</div>
+        <div className="text-sm font-medium mb-3">받은 금액</div>
         <div className="flex flex-wrap gap-2 mb-3">
           {AMOUNT_PRESETS.map((a) => (
             <button
@@ -189,7 +189,7 @@ export default function WorkLog() {
           className="w-full rounded-lg border border-neutral-300 dark:border-neutral-700 bg-transparent p-2 text-sm mb-4"
         />
 
-        <div className="text-sm font-medium mb-2">날짜</div>
+        <div className="text-sm font-medium mb-2">일한 날짜</div>
         <input
           value={date}
           onChange={(e) => setDate(e.target.value)}

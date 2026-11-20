@@ -31,13 +31,13 @@ export async function POST(request: Request) {
   profileUrl.searchParams.set("select", "user_id");
   profileUrl.searchParams.set("username", `eq.${username}`);
 
-  const profileResponse = await fetch(profileUrl, { headers, cache: "no-store" }).catch(() => null);
+  const profileResponse = await fetch(profileUrl, { headers, cache: "no-store", signal: AbortSignal.timeout(10000) }).catch(() => null);
   if (!profileResponse?.ok) return NextResponse.json({ error: "로그인 서버에 연결할 수 없습니다." }, { status: 502 });
   const profiles = await profileResponse.json();
   const userId = Array.isArray(profiles) ? profiles[0]?.user_id : undefined;
   if (!userId) return NextResponse.json({ error: "ID 또는 비밀번호를 확인해 주세요." }, { status: 401 });
 
-  const userResponse = await fetch(`${supabaseUrl}/auth/v1/admin/users/${encodeURIComponent(userId)}`, { headers, cache: "no-store" }).catch(() => null);
+  const userResponse = await fetch(`${supabaseUrl}/auth/v1/admin/users/${encodeURIComponent(userId)}`, { headers, cache: "no-store", signal: AbortSignal.timeout(10000) }).catch(() => null);
   if (!userResponse?.ok) return NextResponse.json({ error: "로그인 서버에 연결할 수 없습니다." }, { status: 502 });
   const authUser = await userResponse.json();
   const email = authUser.email ?? authUser.user?.email;
@@ -48,6 +48,7 @@ export async function POST(request: Request) {
     headers: authHeaders(publishableKey),
     body: JSON.stringify({ email, password }),
     cache: "no-store",
+    signal: AbortSignal.timeout(10000),
   }).catch(() => null);
   if (!tokenResponse) return NextResponse.json({ error: "로그인 서버에 연결할 수 없습니다." }, { status: 502 });
   const session = await tokenResponse.json();

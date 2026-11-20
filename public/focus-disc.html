@@ -8,31 +8,21 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300;9..144,500;9..144,600&family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg: #FFFFFF;
-  --surface: #F2F1EC;
-  --surface-2: #E8E6DF;
+  color-scheme: dark;
+  --bg: #101112;
+  --surface: #17191B;
+  --surface-2: #202326;
   --disc: #E8A33D;
   --disc-dim: #6b5636;
-  --track: #ECEBE6;
-  --text: #1B1B1B;
-  --text-dim: #6B6B66;
+  --track: #0D0F10;
+  --text: #E8EAED;
+  --text-dim: #999DA3;
   --accent: #E2725B;
   --accent-dim: #7a3d31;
   --ok: #2F7A73;
   --radius: 20px;
-  --line-rgb: 27,27,27;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #000000;
-    --surface: #121212;
-    --surface-2: #1C1C1C;
-    --track: #0A0A0A;
-    --text: #F1EAD9;
-    --text-dim: #9FB0B5;
-    --ok: #5FA8A0;
-    --line-rgb: 241,234,217;
-  }
+  --ok: #72B18A;
+  --line-rgb: 232,234,237;
 }
 * { box-sizing: border-box; }
 html, body {
@@ -299,7 +289,7 @@ body.focus-mode .controls { margin-top: 4px; }
   let piePathEl, handLineEl;
   function buildStaticFace() {
     discFace.innerHTML = '';
-    discFace.appendChild(el('circle', { cx: CX, cy: CY, r: R_FACE, fill: '#F4F1E9', stroke: '#1B1B1B', 'stroke-width': 1.5 }));
+    discFace.appendChild(el('circle', { cx: CX, cy: CY, r: R_FACE, fill: '#202326', stroke: '#555A60', 'stroke-width': 1.5 }));
     piePathEl = el('path', { d: '', fill: '#C0392B' });
     discFace.appendChild(piePathEl);
     for (let v = 0; v < 60; v++) {
@@ -322,9 +312,9 @@ body.focus-mode .controls { margin-top: 4px; }
         discFace.appendChild(t);
       }
     }
-    handLineEl = el('line', { x1: CX, y1: CY, x2: CX, y2: CY - R_PIE, stroke: '#F4F1E9', 'stroke-width': 2 });
+    handLineEl = el('line', { x1: CX, y1: CY, x2: CX, y2: CY - R_PIE, stroke: '#E8EAED', 'stroke-width': 2 });
     discFace.appendChild(handLineEl);
-    discFace.appendChild(el('circle', { cx: CX, cy: CY, r: 9, fill: '#F4F1E9', stroke: '#1B1B1B', 'stroke-width': 1.5 }));
+    discFace.appendChild(el('circle', { cx: CX, cy: CY, r: 9, fill: '#202326', stroke: '#555A60', 'stroke-width': 1.5 }));
   }
 
   function buildPiePath(valueMinutes) {

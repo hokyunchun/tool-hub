@@ -39,6 +39,9 @@ create table if not exists public.study_tasks (
   lecture_number integer,
   range_start integer,
   range_end integer,
+  title text,
+  duration_minutes integer check (duration_minutes is null or duration_minutes between 1 and 600),
+  duration_estimated boolean not null default false,
   created_at timestamptz not null default now(),
   constraint study_tasks_lecture_number check (
     (type = 'lecture' and lecture_number > 0)
@@ -75,6 +78,20 @@ create index if not exists study_tasks_user_id_idx on public.study_tasks(user_id
 create index if not exists study_tasks_plan_user_idx on public.study_tasks(plan_id, user_id);
 create index if not exists study_tasks_subject_plan_user_idx on public.study_tasks(subject_id, plan_id, user_id);
 create index if not exists study_progress_user_id_idx on public.study_progress(user_id);
+
+alter table public.study_tasks add column if not exists title text;
+alter table public.study_tasks add column if not exists duration_minutes integer;
+alter table public.study_tasks add column if not exists duration_estimated boolean not null default false;
+do $$ begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'study_tasks_duration_minutes_check'
+      and conrelid = 'public.study_tasks'::regclass
+  ) then
+    alter table public.study_tasks add constraint study_tasks_duration_minutes_check
+      check (duration_minutes is null or duration_minutes between 1 and 600);
+  end if;
+end $$;
 
 -- Data API is enabled for this project, but access is granted only to signed-in users.
 -- RLS policies below further restrict each user to rows they own.
@@ -183,3 +200,17 @@ drop trigger if exists on_auth_user_created_study_profile on auth.users;
 create trigger on_auth_user_created_study_profile
   after insert on auth.users
   for each row execute function private.handle_new_study_profile();
+
+create table if not exists public.study_ai_import_usage (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  requested_at timestamptz not null default now()
+);
+create index if not exists study_ai_import_usage_user_time_idx
+  on public.study_ai_import_usage(user_id, requested_at desc);
+alter table public.study_ai_import_usage enable row level security;
+revoke all on public.study_ai_import_usage from public, anon, authenticated;
+grant select, insert on public.study_ai_import_usage to service_role;
+drop policy if exists "No client access to AI import usage" on public.study_ai_import_usage;
+create policy "No client access to AI import usage" on public.study_ai_import_usage
+  for all to anon, authenticated using (false) with check (false);

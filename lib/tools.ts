@@ -32,8 +32,8 @@ export const tools: Tool[] = [
   },
   {
     slug: "fire-study-planner",
-    name: "소방시험 Study Planner",
-    description: "297강 강의 계획, OX 복습, 과목별 진도를 한곳에서 관리.",
+    name: "Study Planner",
+    description: "강의 목록을 가져와 학습 계획을 만들고 진도를 여러 기기에서 관리.",
     category: "학습",
     status: "live",
   },

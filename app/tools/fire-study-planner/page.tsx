@@ -1,8 +1,8 @@
 import ToolNotes from "@/components/ToolNotes";
 
 export const metadata = {
-  title: "소방시험 Study Planner | Tool Hub",
-  description: "소방시험 297강 계획과 학습 진도를 관리합니다.",
+  title: "Study Planner | Tool Hub",
+  description: "과목과 강의 목록을 바탕으로 개인 학습 계획을 만들고 진도를 관리합니다.",
 };
 
 export default function FireStudyPlannerPage() {
@@ -10,17 +10,17 @@ export default function FireStudyPlannerPage() {
     <div className="-mx-6 -my-10">
       <iframe
         src="/fire-study-planner/index.html"
-        title="소방시험 Study Planner"
+        title="Study Planner"
         className="w-full border-0 min-h-[1600px] md:min-h-[900px]"
         style={{ height: "calc(100vh - 88px)" }}
       />
       <div className="px-6">
         <ToolNotes
-          purpose="소방시험 강의 계획과 실제 진도를 한곳에서 관리하고, 매일 공부량이 현실적인지 확인하기 위해 만들었습니다."
+          purpose="수강 목록과 목표 날짜로 계획을 만들고, 학습 진도와 실제 공부 시간을 관리합니다."
           todo={[
-            "계정별 저장과 기기 간 동기화 코드는 준비되어 있습니다. Supabase 연결 설정 전까지는 현재 브라우저에 저장됩니다.",
-            "예상 강의 시간은 제공된 수강 기록의 과목별 평균을 기준으로 계산합니다. 새 계획은 과목별 평균 시간을 직접 입력할 수 있습니다.",
-            "미완료 강의를 남은 기간에 맞춰 자동 재배치하는 기능은 다음 단계로 남겨두었습니다.",
+            "과목별 수강 내역을 붙여 넣거나 텍스트 파일로 올리면 AI가 강의명과 시간을 정리합니다. 저장 전 결과를 확인할 수 있습니다.",
+            "강의 제목과 재생 시간이 일정표에 표시되고, 빠진 시간은 해당 과목 평균으로 추정합니다.",
+            "완료 기록과 일정은 계정별로 저장되어 같은 계정의 기기끼리 동기화됩니다.",
           ]}
         />
       </div>

@@ -27,6 +27,7 @@ npm run dev
 - 매일 아침 커밋 → Vercel이 자동으로 프로덕션 반영
 - Study Planner 계정 기능에는 Supabase SQL과 Vercel 환경 변수 `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SECRET_KEY`가 필요하다. Secret key는 서버에서만 사용하며 브라우저에 노출하지 않는다.
 - 회원가입 이메일 확인과 비밀번호 복구에는 Supabase Auth URL 설정 및 이메일 발송 서비스가 필요하다. 자세한 설정은 `docs/apps/fire-study-planner/04-account-and-plan-setup.md` 참고
+- 강의 목록 AI 정리에는 Vercel AI Gateway OIDC를 사용하고, 로그인 사용자당 하루 5회로 제한한다. 사용량에 따라 Gateway 비용이 발생할 수 있다.
 
 ## 폴더 구조
 
